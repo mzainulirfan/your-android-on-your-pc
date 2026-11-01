@@ -251,6 +251,17 @@ fn plan_window_frame(window: &WebviewWindow, target_width: f64, dock_right: bool
         .outer_position()
         .map_err(|error| format!("Gagal membaca posisi jendela: {error}"))?;
 
+    // A landscape phone asks for a mirror column wider than the display itself. The frame must
+    // never grow past its own monitor, or its right side falls off the screen and the admin panel
+    // disappears with it.
+    let mut target_width = target_width;
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let work = monitor.work_area();
+        let non_client_width = outer.width as f64 - inner.width * scale;
+        let widest = ((work.size.width as f64 - non_client_width) / scale).max(160.0);
+        target_width = target_width.min(widest);
+    }
+
     let target_outer_width =
         outer.width as i32 + ((target_width - inner.width) * scale).round() as i32;
     let mut target_x = position.x;
@@ -265,7 +276,6 @@ fn plan_window_frame(window: &WebviewWindow, target_width: f64, dock_right: bool
         }
         target_x = fit_in_work_area(target_x, target_outer_width, left, right);
     }
-
     Ok(WindowFrame {
         inner_height: inner.height,
         start_width: inner.width,
@@ -346,9 +356,14 @@ pub fn set_window_width(
     apply_window_frame(&window, &frame, min_width, lock_width)
 }
 
-/// Grow the main window to the current monitor's work area, top to bottom. The height is
-/// measured including the title bar/borders so the outer frame fits the usable screen exactly;
-/// the width is left alone because the mirror's aspect effect chooses it right after.
+/// Grow the main window toward the current monitor's work area, top to bottom, without claiming
+/// all of it. The height is measured including the title bar/borders; the width is left alone
+/// because the mirror's aspect effect chooses it right after.
+///
+/// The frame stays where the user put it — this only changes the height. Parking the window
+/// against the screen's right edge belongs to folding the admin panel away; doing it here too made
+/// a session start by throwing a full-height window into the corner, which then folded the panel
+/// on its own and looked like the app had maximised itself.
 #[tauri::command]
 pub fn fit_window_height(app: AppHandle) -> Result<(), String> {
     // A height fit changes the same frame the width animation writes; cancel it first so it
@@ -367,20 +382,23 @@ pub fn fit_window_height(app: AppHandle) -> Result<(), String> {
     let outer = window
         .outer_size()
         .map_err(|error| format!("Gagal membaca ukuran luar jendela: {error}"))?;
+    let position = window
+        .outer_position()
+        .map_err(|error| format!("Gagal membaca posisi jendela: {error}"))?;
     let monitor = window
         .current_monitor()
         .map_err(|error| format!("Gagal membaca monitor: {error}"))?
         .ok_or_else(|| "Monitor tidak terdeteksi.".to_string())?;
     let work = *monitor.work_area();
 
+    let margin = (SCREEN_MARGIN_LOGICAL * scale).round() as i32;
     let non_client_height = outer.height.saturating_sub(inner.height) as i32;
-    let target_inner_height =
-        (work.size.height as i32 - non_client_height).max(1) as f64 / scale;
-    // Dock the frame to the screen's right edge for the session: every later panel
-    // fold/grow keeps this right edge, so the phone mirror behaves like a right sidebar.
+    let target_inner_height = (work.size.height as i32 - non_client_height - 2 * margin).max(1)
+        as f64
+        / scale;
     let work_right = work.position.x + work.size.width as i32;
     let x = fit_in_work_area(
-        work_right - outer.width as i32,
+        position.x,
         outer.width as i32,
         work.position.x,
         work_right,
@@ -395,7 +413,7 @@ pub fn fit_window_height(app: AppHandle) -> Result<(), String> {
     window
         .set_position(Position::Physical(PhysicalPosition::new(
             x,
-            work.position.y,
+            work.position.y + margin,
         )))
         .map_err(|error| format!("Gagal memindahkan jendela: {error}"))?;
 
@@ -404,6 +422,9 @@ pub fn fit_window_height(app: AppHandle) -> Result<(), String> {
 
 const WINDOW_ANIMATION_MS: u64 = 220;
 const WINDOW_ANIMATION_FRAME_MS: u64 = 16;
+/// Empty band kept above and below the frame when the mirror asks for the screen's height, so a
+/// session never looks like a maximised window.
+const SCREEN_MARGIN_LOGICAL: f64 = 24.0;
 static WINDOW_ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 /// The same width/position change as `set_window_width`, but eased over ~220 ms so folding

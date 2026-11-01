@@ -353,6 +353,10 @@
   let panelAnimating = false;
   let panelAnimationGeneration = 0;
   let lastPanelCollapsed: boolean | null = null;
+  // The frame only learns the screen's right edge once a fold has moved it there. Before the
+  // first fold the window stays where the user put it, so starting a mirror session must not
+  // slide it across the display. Plain: it mirrors the OS frame, it is not a rendering input.
+  let frameDocked = false;
   // The new aspect must not be applied before the height fit finishes: otherwise a width
   // animation could capture the old (shorter) height and write it back every frame.
   let heightFit: Promise<void> = Promise.resolve();
@@ -365,7 +369,12 @@
 
   const mirrorWidthPx = $derived(
     mirrorAspect && mirrorHeight > 0
-      ? Math.round(mirrorHeight * mirrorAspect) + 25
+      ? Math.min(
+          Math.round(mirrorHeight * mirrorAspect) + 25,
+          // A landscape phone would ask for a column wider than the display; the screen gets the
+          // last word so the admin panel is never pushed off it. The video letterboxes instead.
+          Math.max(320, (window.screen?.availWidth ?? 1180) - (panelCollapsed ? 0 : ADMIN_MIN_WIDTH)),
+        )
       : null,
   );
 
@@ -391,7 +400,7 @@
     // Releasing the lock must always reach Rust even if the width already matches.
     if (!lockWidth && !windowWidthLocked && Math.abs(window.innerWidth - target) <= 2) return;
     windowWidthLocked = lockWidth;
-    void setWindowWidth(target, Math.round(minWidth), lockWidth, true).catch(() => {});
+    void setWindowWidth(target, Math.round(minWidth), lockWidth, frameDocked).catch(() => {});
   }
 
   // Opening and closing the panel gets the eased path. Width changes caused by the stage height
@@ -402,7 +411,7 @@
     panelAnimating = true;
     windowWidthLocked = lockWidth;
     try {
-      await animateWindowWidth(Math.round(width), Math.round(minWidth), lockWidth, true);
+      await animateWindowWidth(Math.round(width), Math.round(minWidth), lockWidth, frameDocked);
     } catch {
       // Keep the layout usable even if the OS refuses one frame.
     } finally {
@@ -457,6 +466,9 @@
       ? mirrorWidth
       : Math.max(expandedWidth, mirrorWidth + ADMIN_MIN_WIDTH);
     const minWidth = collapsed ? mirrorWidth : 720;
+    // Folding is what anchors the frame to the right edge; from then on the edge stays put so
+    // opening the panel again grows to the left instead of jumping.
+    if (collapsed) frameDocked = true;
     if (changed) {
       void animatePanelWindow(width, minWidth, collapsed);
     } else {
@@ -843,6 +855,7 @@
       panelAnimationGeneration += 1;
       panelAnimating = false;
       lastPanelCollapsed = null;
+      frameDocked = false;
       // The session prep already read both verdicts; asking the phone again here would put
       // a `dumpsys` in the middle of scrcpy's startup and leave the toggle on
       // "Memeriksa layar..." while the video is coming up.
@@ -852,8 +865,8 @@
       // keeps the caret in this window when it is locked; the chip has to say the same thing.
       keyboardOnPhone = !info.locked;
       lastStateReadAt = Date.now();
-      // Use the PC screen properly as soon as the session is up: the window spans the
-      // monitor's work area top to bottom, then the aspect effect picks the width.
+      // Use the PC screen properly as soon as the session is up: the window grows to nearly the
+      // whole work area height, then the aspect effect picks the width.
       heightFit = fitWindowHeight().catch(() => {});
     });
 
@@ -872,6 +885,7 @@
       panelAnimationGeneration += 1;
       panelAnimating = false;
       lastPanelCollapsed = null;
+      frameDocked = false;
       heightFit = Promise.resolve();
       lastStateReadAt = 0;
       // A collapsed session lowered the window floor to the phone's width. Put the admin
