@@ -80,6 +80,12 @@ export async function connectWireless(address: string): Promise<string> {
   return invoke<string>('connect_wireless', { address });
 }
 
+/** Pair with the phone's Wireless debugging dialog (Android 11+): ip:port from the dialog + 6-digit code. */
+export async function pairWireless(address: string, code: string): Promise<string> {
+  if (!isTauri) throw 'Pairing Wi-Fi hanya tersedia saat aplikasi dijalankan melalui Tauri.';
+  return invoke<string>('pair_wireless', { address, code });
+}
+
 export async function forgetWireless(address: string): Promise<void> {
   if (!isTauri) return;
   await invoke('forget_wireless', { address });

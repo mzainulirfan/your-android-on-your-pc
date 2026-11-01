@@ -74,6 +74,7 @@ pub fn run() {
             commands::get_devices_snapshot,
             commands::enable_wireless,
             commands::connect_wireless,
+            commands::pair_wireless,
             commands::get_known_wireless,
             commands::forget_wireless,
             commands::set_screen_power,

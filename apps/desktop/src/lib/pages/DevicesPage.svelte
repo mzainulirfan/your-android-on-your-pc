@@ -29,6 +29,7 @@
     startingSerial: string | null;
     wifiBusy: string | null;
     wifiConnecting: boolean;
+    wifiPairing: boolean;
     screenshotBusy: boolean;
     imageBusy: boolean;
     screenBusy: 'sleep' | 'wake' | null;
@@ -42,6 +43,7 @@
     onClipboardImage: (serial: string) => void;
     onEnableWireless: (serial: string) => void;
     onConnectAddress: (address: string) => void;
+    onPairAddress: (address: string, code: string) => void;
     onForgetAddress: (address: string) => void;
     onDismissNotice: () => void;
   }
@@ -60,6 +62,7 @@
     startingSerial,
     wifiBusy,
     wifiConnecting,
+    wifiPairing,
     screenshotBusy,
     imageBusy,
     screenBusy,
@@ -73,11 +76,14 @@
     onClipboardImage,
     onEnableWireless,
     onConnectAddress,
+    onPairAddress,
     onForgetAddress,
     onDismissNotice,
   }: Props = $props();
 
   let addressDraft = $state('');
+  let pairAddressDraft = $state('');
+  let pairCodeDraft = $state('');
 
   const readyDevices = $derived(devices.filter(isReady));
   const liveWireless = $derived(
@@ -125,6 +131,15 @@
     const target = addressDraft.trim();
     if (target === '') return;
     onConnectAddress(target);
+  }
+
+  function submitPairing(event: SubmitEvent) {
+    event.preventDefault();
+    const target = pairAddressDraft.trim();
+    const code = pairCodeDraft.trim();
+    if (target === '' || code.length !== 6) return;
+    onPairAddress(target, code);
+    pairCodeDraft = '';
   }
 
   function detailOf(device: AndroidDevice): string {
@@ -282,7 +297,7 @@
 
 <header class="flex flex-wrap items-end justify-between gap-3 border-b border-white/5 px-4 py-5 @2xl:px-6 @5xl:px-8 @2xl:py-6">
   <div class="min-w-0">
-    <h1 class="text-2xl font-semibold tracking-tight">Perangkat</h1>
+    <h1 class="text-lg font-semibold tracking-tight">Perangkat</h1>
     <p class="mt-1 truncate text-xs text-zinc-500">
       {#if loading}
         Memindai perangkat melalui ADB...
@@ -424,11 +439,17 @@
     {:else}
       {#if session}
         <section class="overflow-hidden rounded-2xl border border-emerald-500/20 bg-zinc-900/40">
-          <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-white/5 px-5 py-3.5">
-            <div class="flex items-center gap-2">
-              <span class="relative flex h-2 w-2">
-                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
-                <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
+          <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-white/5 px-4 py-3.5 @2xl:px-5">
+            <div class="flex items-center gap-3">
+              <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-zinc-950/60">
+                <svg viewBox="0 0 20 20" class="h-[18px] w-[18px] text-emerald-300/80" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+                  <rect x="6" y="2.5" width="8" height="15" rx="2" />
+                  <path d="M9 15.2h2" />
+                </svg>
+                <span class="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50"></span>
+                  <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
+                </span>
               </span>
               <h2 class="text-sm font-semibold text-emerald-200">Sesi aktif</h2>
             </div>
@@ -464,8 +485,15 @@
 
       {#if readyOnly.length > 0}
         <section class="overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/40">
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-5 py-3.5">
-            <h2 class="text-sm font-semibold">Siap dipakai</h2>
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3.5 @2xl:px-5">
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
+                <svg viewBox="0 0 20 20" class="h-[18px] w-[18px] text-emerald-300/70" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10.8 2.5 4.5 11h4l-1.3 6.5L15.5 9h-4z" />
+                </svg>
+              </span>
+              <h2 class="text-sm font-semibold">Siap dipakai</h2>
+            </div>
             <p class="text-[11px] text-zinc-500">
               {readyOnly.length} perangkat siap dicerminkan
             </p>
@@ -480,8 +508,17 @@
 
       {#if attentionOnly.length > 0}
         <section class="overflow-hidden rounded-2xl border border-amber-500/15 bg-zinc-900/40">
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/10 px-5 py-3.5">
-            <h2 class="text-sm font-semibold text-amber-200">Perlu perhatian</h2>
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/10 px-4 py-3.5 @2xl:px-5">
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-zinc-950/60">
+                <svg viewBox="0 0 20 20" class="h-[18px] w-[18px] text-amber-300/80" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 3.2 2.8 16h14.4z" />
+                  <path d="M10 8v3.4" />
+                  <circle cx="10" cy="13.8" r="0.5" fill="currentColor" stroke="none" />
+                </svg>
+              </span>
+              <h2 class="text-sm font-semibold text-amber-200">Perlu perhatian</h2>
+            </div>
             <p class="text-[11px] text-amber-200/60">
               {attentionOnly.length} perangkat belum bisa dicerminkan
             </p>
@@ -497,12 +534,14 @@
 
     <!-- Wireless transport -->
     <section class="overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/40">
-      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-5 py-3.5">
-        <div class="flex items-center gap-2.5">
-          <svg viewBox="0 0 20 20" class="h-4 w-4 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-            <path d="M2.8 7.8a10 10 0 0 1 14.4 0M5.4 10.6a6.5 6.5 0 0 1 9.2 0M8 13.4a3 3 0 0 1 4 0" />
-            <circle cx="10" cy="16" r="0.9" fill="currentColor" stroke="none" />
-          </svg>
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3.5 @2xl:px-5">
+        <div class="flex items-center gap-3">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
+            <svg viewBox="0 0 20 20" class="h-[18px] w-[18px] text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+              <path d="M2.8 7.8a10 10 0 0 1 14.4 0M5.4 10.6a6.5 6.5 0 0 1 9.2 0M8 13.4a3 3 0 0 1 4 0" />
+              <circle cx="10" cy="16" r="0.9" fill="currentColor" stroke="none" />
+            </svg>
+          </span>
           <h2 class="text-sm font-semibold">Koneksi Wi-Fi</h2>
         </div>
         <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ring-inset {liveWireless.length > 0
@@ -543,6 +582,49 @@
                 class="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {wifiConnecting ? 'Menghubungkan...' : 'Hubungkan'}
+              </button>
+            </div>
+          </form>
+
+          <form onsubmit={submitPairing}>
+            <label for="pair-address" class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Pairing nirkabel (Android 11+)
+            </label>
+            <p class="mt-1 text-[11px] leading-relaxed text-zinc-500">
+              Di HP: Setelan → Opsi Pengembang → <span class="font-mono">Debug nirkabel</span> →
+              <span class="font-semibold text-zinc-400">Pair perangkat dengan kode pairing</span>.
+              Masukkan alamat dan kode 6 angka dari dialog itu — kode hanya berlaku selama dialog
+              terbuka. Setelah ter-pairing, HP bisa dihubungkan dari halaman ini lewat
+              <span class="font-mono">adb connect</span> tanpa kabel, dan tetap terhubung walau
+              HP menyala ulang (berbeda dengan mode <span class="font-mono">tcpip</span> di atas).
+            </p>
+            <div class="mt-1.5 flex flex-wrap gap-2">
+              <input
+                id="pair-address"
+                bind:value={pairAddressDraft}
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="192.168.1.20:37123"
+                class="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 font-mono text-xs text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-emerald-500/40"
+              />
+              <input
+                bind:value={pairCodeDraft}
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                maxlength="6"
+                placeholder="123456"
+                aria-label="Kode pairing 6 angka"
+                class="w-28 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-center font-mono text-xs tracking-[0.3em] text-zinc-100 outline-none transition placeholder:tracking-normal placeholder:text-zinc-600 focus:border-emerald-500/40"
+              />
+              <button
+                type="submit"
+                disabled={wifiPairing}
+                class="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {wifiPairing ? 'Memasangkan...' : 'Pairing'}
               </button>
             </div>
           </form>

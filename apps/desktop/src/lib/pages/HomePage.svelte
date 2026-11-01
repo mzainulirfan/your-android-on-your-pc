@@ -193,7 +193,7 @@
 
 <header class="flex flex-wrap items-end justify-between gap-3 border-b border-white/5 px-4 py-5 @2xl:px-6 @5xl:px-8 @2xl:py-6">
   <div class="min-w-0">
-    <h1 class="text-2xl font-semibold tracking-tight">Home</h1>
+    <h1 class="text-lg font-semibold tracking-tight">Beranda</h1>
     <p class="mt-1 truncate text-xs text-zinc-500">
       {#if session}
         {heroTitle} sedang dicerminkan
@@ -416,10 +416,21 @@
 
     <!-- Locate -->
     <section class="rounded-2xl border border-white/5 bg-zinc-900/40 p-4 @2xl:p-5">
-      <h2 class="text-sm font-semibold">Cari HP</h2>
-      <p class="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
-        Untuk HP yang terselip: layar dibangunkan dan pintasan portal Find My Device muncul.
-      </p>
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
+          <svg viewBox="0 0 20 20" class="h-[18px] w-[18px] text-sky-300/80" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <circle cx="10" cy="10" r="6" />
+            <circle cx="10" cy="10" r="1.4" fill="currentColor" stroke="none" />
+            <path d="M10 1.8v2.4M10 15.8v2.4M1.8 10h2.4M15.8 10h2.4" />
+          </svg>
+        </span>
+        <div class="min-w-0 flex-1">
+          <h2 class="text-sm font-semibold">Cari HP</h2>
+          <p class="mt-0.5 text-[11px] leading-relaxed text-zinc-500">
+            Untuk HP yang terselip: layar dibangunkan dan pintasan portal Find My Device muncul.
+          </p>
+        </div>
+      </div>
       <div class="mt-4 grid grid-cols-1 gap-2 @xl:grid-cols-2">
         <select
           bind:value={cameraLens}
@@ -500,12 +511,12 @@
         onclick={() => onNavigate('files')}
         class="rounded-xl border border-white/5 bg-zinc-900/40 p-4 text-left transition hover:border-emerald-500/20 hover:bg-zinc-900/60"
       >
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.03] ring-1 ring-white/5">
-          <svg viewBox="0 0 20 20" class="h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+        <div class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
+          <svg viewBox="0 0 20 20" class="h-4 w-4 text-sky-300/80" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
             <path d="M3.5 5.5a1 1 0 0 1 1-1h3l1.5 2h6a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
           </svg>
         </div>
-        <p class="mt-3 text-xs font-semibold text-zinc-100">Files</p>
+        <p class="mt-3 text-xs font-semibold text-zinc-100">Berkas</p>
         <p class="mt-1 text-[11px] leading-relaxed text-zinc-500">
           Jelajahi penyimpanan HP, unduh, atau unggah.
         </p>
@@ -515,13 +526,13 @@
         onclick={() => onNavigate('devices')}
         class="rounded-xl border border-white/5 bg-zinc-900/40 p-4 text-left transition hover:border-emerald-500/20 hover:bg-zinc-900/60"
       >
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.03] ring-1 ring-white/5">
-          <svg viewBox="0 0 20 20" class="h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <div class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
+          <svg viewBox="0 0 20 20" class="h-4 w-4 text-emerald-300/80" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
             <rect x="6" y="2.5" width="8" height="15" rx="2" />
             <path d="M9 15.2h2" />
           </svg>
         </div>
-        <p class="mt-3 text-xs font-semibold text-zinc-100">Devices</p>
+        <p class="mt-3 text-xs font-semibold text-zinc-100">Perangkat</p>
         <p class="mt-1 text-[11px] leading-relaxed text-zinc-500">
           {devices.length > 0
             ? `${readyDevices.length} siap dari ${devices.length} perangkat`
@@ -533,7 +544,7 @@
         onclick={() => onNavigate('settings')}
         class="rounded-xl border border-white/5 bg-zinc-900/40 p-4 text-left transition hover:border-emerald-500/20 hover:bg-zinc-900/60"
       >
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.03] ring-1 ring-white/5">
+        <div class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
           <svg viewBox="0 0 20 20" class="h-4 w-4 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
             <path d="M4 6h8M4 12h4M4 18h10" />
             <circle cx="15" cy="6" r="1.6" />
@@ -541,7 +552,7 @@
             <circle cx="16" cy="18" r="1.6" />
           </svg>
         </div>
-        <p class="mt-3 text-xs font-semibold text-zinc-100">Settings</p>
+        <p class="mt-3 text-xs font-semibold text-zinc-100">Setelan</p>
         <p class="mt-1 text-[11px] leading-relaxed text-zinc-500">
           Kualitas mirroring, folder unduhan, diagnostik.
         </p>

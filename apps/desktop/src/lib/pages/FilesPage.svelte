@@ -148,6 +148,12 @@
     return trimmed.slice(0, index);
   }
 
+  function folderName(path: string) {
+    const trimmed = path.replace(/\/+$/, '');
+    const name = trimmed.slice(trimmed.lastIndexOf('/') + 1);
+    return name === '' ? 'Berkas HP' : name;
+  }
+
   async function download(entry: AndroidEntry) {
     const serial = deviceSerial;
     if (!serial) return;
@@ -179,7 +185,7 @@
 
 <header class="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-4 py-4 @2xl:px-6 @5xl:px-8 @2xl:py-5">
   <div class="min-w-0 flex-1">
-    <h1 class="text-lg font-semibold tracking-tight">Files</h1>
+    <h1 class="text-lg font-semibold tracking-tight">Berkas</h1>
     <p class="mt-0.5 text-xs text-zinc-500">
       {#if deviceSerial}
         Unduh file HP ke PC · seret file PC ke jendela ini untuk unggah ke folder yang dibuka
@@ -245,25 +251,38 @@
       </div>
     {/if}
 
-    <div class="mb-3 flex items-center gap-2">
+    <div class="mb-3 flex flex-wrap items-center gap-3">
+      <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
+        <svg viewBox="0 0 20 20" class="h-[18px] w-[18px] text-amber-300/80" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+          <path d="M3.5 5.5a1 1 0 0 1 1-1h3l1.5 2h6a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
+        </svg>
+      </span>
+      <div class="min-w-0 flex-1">
+        <h2 class="flex min-w-0 items-center gap-2 text-sm font-semibold">
+          <span class="truncate">{folderName(currentDir)}</span>
+          {#if !loading && entries.length > 0}
+            <span class="shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400">
+              {entries.length}
+            </span>
+          {/if}
+        </h2>
+        <p class="mt-0.5 truncate font-mono text-[10px] text-zinc-500" title={currentDir}>
+          {currentDir}
+          {#if !loading && entries.length > 0}
+            <span class="text-zinc-600"> · {folderCount} folder · {fileCount} file</span>
+          {/if}
+        </p>
+      </div>
       <button
         type="button"
         onclick={goUp}
         disabled={atRoot}
         title="Naik satu folder"
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm text-zinc-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+        aria-label="Naik satu folder"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm text-zinc-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
       >
         ↑
       </button>
-      <div class="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-white/5 bg-black/20 px-3 py-1.5">
-        <svg viewBox="0 0 20 20" class="h-4 w-4 shrink-0 text-amber-400/80" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
-          <path d="M3.5 5.5a1 1 0 0 1 1-1h3l1.5 2h6a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
-        </svg>
-        <p class="min-w-0 truncate font-mono text-[11px] text-zinc-300">{currentDir}</p>
-        {#if !loading && entries.length > 0}
-          <span class="ml-auto hidden shrink-0 text-[10px] text-zinc-600 @2xl:inline">{folderCount} folder · {fileCount} file</span>
-        {/if}
-      </div>
     </div>
 
     <div class="mb-4 flex flex-wrap gap-1.5">
@@ -271,9 +290,9 @@
         <button
           type="button"
           onclick={() => (currentDir = shortcut.path)}
-          class="rounded-md border px-2.5 py-1 text-[11px] transition {currentDir === shortcut.path
-            ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200'
-            : 'border-white/5 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200'}"
+          class="rounded-lg border px-3 py-1.5 text-[11px] font-medium transition {currentDir === shortcut.path
+            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
+            : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200'}"
         >
           {shortcut.label}
         </button>
@@ -281,7 +300,7 @@
       <button
         type="button"
         onclick={() => (currentDir = '/sdcard')}
-        class="rounded-md border border-white/5 bg-white/[0.03] px-2.5 py-1 text-[11px] text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
+        class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200"
       >
         /sdcard
       </button>
@@ -389,7 +408,7 @@
 
     <p class="mt-4 text-[11px] leading-relaxed text-zinc-600">
       Tarik file dari PC ke jendela ini untuk mengunggah ke <span class="font-mono text-zinc-400">{currentDir}</span>.
-      File yang diunduh disimpan ke folder unduhan di Pengaturan.
+      File yang diunduh disimpan ke folder unduhan di Setelan.
     </p>
   {/if}
 </div>

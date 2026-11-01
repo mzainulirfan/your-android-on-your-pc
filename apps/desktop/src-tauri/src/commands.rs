@@ -108,6 +108,15 @@ pub async fn connect_wireless(app: AppHandle, address: String) -> Result<String,
     Ok(address)
 }
 
+/// Pair with a phone's Wireless debugging dialog (Android 11+). The pairing port is not a
+/// reconnectable address — it lives only while the dialog is open — so nothing is stored.
+#[tauri::command]
+pub async fn pair_wireless(address: String, code: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || adb::pair_address(&address, &code))
+        .await
+        .map_err(|error| format!("Pairing gagal dijalankan: {error}"))?
+}
+
 #[tauri::command]
 pub async fn forget_wireless(app: AppHandle, address: String) -> Result<(), String> {
     let worker = address.clone();

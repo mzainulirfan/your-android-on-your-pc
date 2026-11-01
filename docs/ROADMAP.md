@@ -28,9 +28,9 @@ Asumsi: satu pengembang, Windows, scrcpy sebagai fondasi.
 ## Sprint 3 — Wireless (sebagian)
 
 - [x] Handoff USB → Wi-Fi: `adb tcpip` + `adb connect` berdasarkan IP `wlan`
-- [ ] Alur `adb pair` / Wireless debugging
-- [ ] Input IP:port manual + validasi
-- [ ] Reconnect dan timeout tanpa sesi duplikat
+- [x] Alur `adb pair` / Wireless debugging (form Pairing nirkabel di halaman Perangkat; `adb::pair_address`)
+- [x] Input IP:port manual + validasi (`normalize_wireless_address`, IPv4 saja, port 1–65535)
+- [x] Reconnect dan timeout tanpa sesi duplikat (poller mencoba alamat tersimpan tiap 20 dtk; `SessionManager::start` menolak sesi kedua)
 - [x] Preferensi kualitas (resolusi, bitrate) → diteruskan ke `--max-size` dan `--video-bit-rate` scrcpy
 - [x] Penyimpanan pengaturan lokal (`settings.json` di folder konfigurasi aplikasi)
 - [ ] Uji jaringan putus/lemah

@@ -622,6 +622,53 @@ pub fn disconnect_address(address: &str) -> Result<(), String> {
     run_with_timeout(&adb, &["disconnect", &address], RECONNECT_TIMEOUT).map(|_| ())
 }
 
+/// The pairing code Android shows is exactly six digits; anything else cannot reach the
+/// phone's dialog, so it is rejected before ADB is spawned.
+fn validate_pair_code(input: &str) -> Result<String, String> {
+    let code = input.trim();
+    if code.len() != 6 || !code.chars().all(|digit| digit.is_ascii_digit()) {
+        return Err("Kode pairing harus 6 angka, seperti yang ditampilkan HP.".to_string());
+    }
+    Ok(code.to_string())
+}
+
+/// Wireless debugging pairing (Android 11+): the phone shows a six-digit code and its own
+/// pairing port under "Pair device with pairing code", and the TLS exchange done by
+/// `adb pair` is what lets a later `adb connect` reach the phone without the older
+/// `adb tcpip` handoff. The pairing port is the one from the dialog — a bare IP would be
+/// normalized to 5555, which is the connect port, so an explicit port is required here.
+pub fn pair_address(input: &str, code: &str) -> Result<String, String> {
+    let address = if input.trim().contains(':') {
+        normalize_wireless_address(input)?
+    } else {
+        return Err(
+            "Alamat pairing harus menyertakan port yang ditampilkan HP, misalnya \
+             192.168.1.20:37123 — bukan IP saja."
+                .to_string(),
+        );
+    };
+    let code = validate_pair_code(code)?;
+
+    let adb = adb_path()?;
+    let output = run_with_timeout(&adb, &["pair", &address, &code], DEFAULT_TIMEOUT)
+        .map_err(|error| {
+            format!(
+                "HP menolak pairing di {address} — {error} Kode hanya berlaku selama dialog \
+                 \"Pair device with pairing code\" masih terbuka di HP; tutup lalu buka lagi \
+                 dialog itu dan ulangi."
+            )
+        })?;
+    let text = output.trim().to_string();
+
+    if text.to_lowercase().contains("successfully paired") {
+        return Ok(address);
+    }
+    Err(format!(
+        "Pairing di {address} tidak berhasil ({text}). Pastikan kode masih tampil di HP dan \
+         dialog pairing-nya belum ditutup."
+    ))
+}
+
 /// Best-effort reconnect used by the background device poll. Returns a message only when
 /// the attempt failed, so an unreachable phone does not raise an error on every pass but
 /// the reason is still available to show when nothing else explains an empty list.
@@ -1046,6 +1093,15 @@ mod tests {
         assert!(normalize_wireless_address("nas-pintar:5555").is_err());
         assert!(normalize_wireless_address("192.168.1.20:0").is_err());
         assert!(normalize_wireless_address("").is_err());
+    }
+
+    #[test]
+    fn pairing_codes_are_six_digits_or_nothing() {
+        assert_eq!(validate_pair_code(" 123456 ").unwrap(), "123456");
+        assert!(validate_pair_code("12345").is_err());
+        assert!(validate_pair_code("1234567").is_err());
+        assert!(validate_pair_code("12ab56").is_err());
+        assert!(validate_pair_code("").is_err());
     }
 
     /// The state probes are shell pipelines that run on the phone, so their parsing must be

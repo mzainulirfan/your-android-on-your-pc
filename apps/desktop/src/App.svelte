@@ -11,6 +11,7 @@
     getAdbStatus,
     getDevicesSnapshot,
     getKnownWireless,
+    pairWireless,
     getMirrorAspect,
     getScrcpyStatus,
     getSessionStatus,
@@ -59,6 +60,7 @@
   let startingSerial = $state<string | null>(null);
   let wifiBusy = $state<string | null>(null);
   let wifiConnecting = $state(false);
+  let wifiPairing = $state(false);
   let knownWireless = $state<string[]>([]);
   let imageBusy = $state(false);
   let screenshotBusy = $state(false);
@@ -143,10 +145,10 @@
   }
 
   const navPages: { page: Page; label: string }[] = [
-    { page: 'home', label: 'Home' },
-    { page: 'devices', label: 'Devices' },
-    { page: 'files', label: 'Files' },
-    { page: 'settings', label: 'Settings' },
+    { page: 'home', label: 'Beranda' },
+    { page: 'devices', label: 'Perangkat' },
+    { page: 'files', label: 'Berkas' },
+    { page: 'settings', label: 'Setelan' },
   ];
 
   function navIconClass(target: Page) {
@@ -522,6 +524,39 @@
     }
   }
 
+  async function pairByAddress(address: string, code: string) {
+    const target = address.trim();
+    const digits = code.trim();
+    if (!target) {
+      sessionNotice = {
+        kind: 'error',
+        text: 'Isi dulu alamat pairing HP, misalnya 192.168.1.20:37123 (lihat dialog pairing di HP).',
+      };
+      return;
+    }
+    if (digits.length !== 6) {
+      sessionNotice = { kind: 'error', text: 'Kode pairing harus 6 angka dari layar HP.' };
+      return;
+    }
+
+    wifiPairing = true;
+    sessionNotice = null;
+    try {
+      const paired = await pairWireless(target, digits);
+      sessionNotice = {
+        kind: 'info',
+        text:
+          `HP ter-pairing lewat ${paired}. Sekarang tekan Hubungkan pada alamat ` +
+          'koneksi yang tampil di layar Debug nirkabel HP (port-nya beda dengan port pairing).',
+      };
+      await Promise.all([refresh(), loadKnownWireless()]);
+    } catch (cause) {
+      sessionNotice = { kind: 'error', text: errorText(cause) };
+    } finally {
+      wifiPairing = false;
+    }
+  }
+
   async function removeKnownWireless(address: string) {
     try {
       await forgetWireless(address);
@@ -583,7 +618,7 @@
       } else {
         sessionNotice = {
           kind: 'info',
-          text: `${result.pushed} file dikirim ke ${serial}. Buka Files > Download di HP untuk melihatnya.`,
+          text: `${result.pushed} file dikirim ke ${serial}. Buka Berkas > Download di HP untuk melihatnya.`,
         };
       }
     } catch (cause) {
@@ -1139,6 +1174,7 @@
         {startingSerial}
         {wifiBusy}
         {wifiConnecting}
+        {wifiPairing}
         {screenshotBusy}
         {imageBusy}
         {screenBusy}
@@ -1152,6 +1188,7 @@
         onClipboardImage={(serial) => void sendImageFromClipboard(serial)}
         onEnableWireless={(serial) => void activateWireless(serial)}
         onConnectAddress={(address) => void connectByAddress(address)}
+        onPairAddress={(address, code) => void pairByAddress(address, code)}
         onForgetAddress={(address) => void removeKnownWireless(address)}
         onDismissNotice={() => (sessionNotice = null)}
       />
