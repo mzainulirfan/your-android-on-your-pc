@@ -3,6 +3,9 @@ import { emit, listen } from '@tauri-apps/api/event';
 import type {
   AdbStatus,
   AndroidEntry,
+  ChatPickerEvent,
+  ChatTarget,
+  ClipboardPasteNote,
   DevicesSnapshot,
   Diagnostics,
   ImageSendResult,
@@ -105,6 +108,17 @@ export async function setScreenPower(serial: string, sleep: boolean): Promise<Wa
   return invoke<WakeState>('set_screen_power', { serial, sleep });
 }
 
+/**
+ * Hide or reveal the phone's display through the running mirror session itself (scrcpy's own
+ * shortcut). The phone stays awake, so unlike `setScreenPower(sleep)` no keyguard is armed and
+ * the mirrored picture stays live and usable. Throws when there is no embedded mirror; the
+ * caller then falls back to a real sleep.
+ */
+export async function scrcpyScreenPower(on: boolean): Promise<void> {
+  if (!isTauri) throw 'Layar tanpa kunci hanya tersedia di dalam sesi cermin.';
+  await invoke('scrcpy_screen_power', { on });
+}
+
 export async function pushFiles(
   serial: string,
   paths: string[],
@@ -141,6 +155,7 @@ export async function getSettings(): Promise<Settings> {
       mirrorScreenOff: false,
       lowLatency: false,
       audioEnabled: true,
+      theme: 'dark',
     };
   }
   return invoke<Settings>('get_settings');
@@ -149,6 +164,16 @@ export async function getSettings(): Promise<Settings> {
 export async function saveSettings(settings: Settings): Promise<Settings> {
   if (!isTauri) throw 'Pengaturan hanya tersedia saat aplikasi dijalankan melalui Tauri.';
   return invoke<Settings>('save_settings', { settings });
+}
+
+export async function getTheme(): Promise<'dark' | 'light'> {
+  if (!isTauri) return 'dark';
+  return invoke<'dark' | 'light'>('get_theme');
+}
+
+export async function setTheme(theme: 'dark' | 'light'): Promise<'dark' | 'light'> {
+  if (!isTauri) throw 'Tema hanya dapat disimpan saat aplikasi dijalankan melalui Tauri.';
+  return invoke<'dark' | 'light'>('set_theme', { theme });
 }
 
 export async function getDiagnostics(deep = false): Promise<Diagnostics> {
@@ -164,6 +189,34 @@ export async function openDownloadDir(): Promise<void> {
 export async function sendClipboardImage(serial: string): Promise<ImageSendResult> {
   if (!isTauri) throw 'Kirim gambar hanya tersedia saat aplikasi dijalankan melalui Tauri.';
   return invoke<ImageSendResult>('send_clipboard_image', { serial });
+}
+
+/**
+ * Finish the phone's own destination list with the chat clicked in the panel, and remember it as
+ * where this device sends to. Rust reads the screen again before it taps anything.
+ */
+export async function pickChatTarget(
+  serial: string,
+  packageName: string,
+  label: string,
+): Promise<string> {
+  if (!isTauri) throw 'Pilihan chat hanya tersedia saat aplikasi dijalankan melalui Tauri.';
+  return invoke<string>('pick_chat_target', {
+    serial,
+    package: packageName,
+    label,
+  });
+}
+
+/** Saved paste destinations across devices, for the settings page. */
+export async function getAllChatTargets(): Promise<ChatTarget[]> {
+  if (!isTauri) return [];
+  return invoke<ChatTarget[]>('get_all_chat_targets');
+}
+
+export async function removeChatTarget(id: string): Promise<void> {
+  if (!isTauri) return;
+  await invoke('remove_chat_target', { id });
 }
 
 export async function openFindDevice(serial: string): Promise<LocateReport> {
@@ -281,17 +334,32 @@ export function onMirrorAspect(callback: (aspect: number) => void) {
   return listen<number>('mirror-aspect', (event) => callback(event.payload));
 }
 
+/** Progress of the Ctrl+V picture hand-off started inside the mirror (Rust worker thread). */
+export function onClipboardPaste(callback: (note: ClipboardPasteNote) => void) {
+  if (!isTauri) return Promise.resolve(() => {});
+  return listen<ClipboardPasteNote>('clipboard-paste', (event) => callback(event.payload));
+}
+
+/** The chats the phone is offering as a paste destination, read from its own picker. */
+export function onChatPicker(callback: (event: ChatPickerEvent) => void) {
+  if (!isTauri) return Promise.resolve(() => {});
+  return listen<ChatPickerEvent>('chat-picker', (event) => callback(event.payload));
+}
+
 /**
  * Resize the main window to an exact client width while keeping its height. Used when the
  * admin panel folds away so the window hugs the mirrored phone instead of leaving side bands.
+ * `dockRight` anchors the frame to the monitor's right edge, so folding shrinks it toward the
+ * side of the screen and reopening grows it leftward.
  */
 export async function setWindowWidth(
   width: number,
   minWidth: number,
   lockWidth = false,
+  dockRight = false,
 ): Promise<void> {
   if (!isTauri) return;
-  await invoke('set_window_width', { width, minWidth, lockWidth });
+  await invoke('set_window_width', { width, minWidth, lockWidth, dockRight });
 }
 
 /** Same as `setWindowWidth`, but eased by Rust so the panel does not snap open/closed. */
@@ -299,9 +367,10 @@ export async function animateWindowWidth(
   width: number,
   minWidth: number,
   lockWidth = false,
+  dockRight = false,
 ): Promise<void> {
   if (!isTauri) return;
-  await invoke('animate_window_width', { width, minWidth, lockWidth });
+  await invoke('animate_window_width', { width, minWidth, lockWidth, dockRight });
 }
 
 /** Fit the window to the monitor's usable height (top to bottom) after connecting. */

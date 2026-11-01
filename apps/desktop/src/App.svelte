@@ -15,7 +15,10 @@
     getMirrorAspect,
     getScrcpyStatus,
     getSessionStatus,
+    getTheme,
     isTauri,
+    onChatPicker,
+    onClipboardPaste,
     onDevicesChanged,
     onDeviceUnlocked,
     onMirrorAspect,
@@ -23,6 +26,7 @@
     onSessionExited,
     onSessionStarted,
     onTransferProgress,
+    pickChatTarget,
     pushFiles,
     sendClipboardImage as requestClipboardImage,
     setScreenPower,
@@ -30,6 +34,7 @@
     stopSession,
     setKeyboardOwner,
     setMirrorRect,
+    setTheme,
     setWindowWidth,
     wakeState,
   } from './lib/api';
@@ -41,6 +46,8 @@
   import type {
     AdbStatus,
     AndroidDevice,
+    ChatPickerEvent,
+    ClipboardPasteNote,
     DevicesSnapshot,
     KeypadState,
     ScrcpyStatus,
@@ -72,6 +79,36 @@
   let filesDir = $state('/sdcard/Download');
   let filesSerial = $state<string | null>(null);
   let filesRefreshKey = $state(0);
+
+  // Theme. The inline script in index.html already painted the palette from localStorage
+  // before first paint; settings.json is the real store and wins as soon as IPC answers,
+  // so a phone changed on another surface never fights the CSS.
+  let theme = $state<'dark' | 'light'>(
+    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
+  );
+
+  function applyTheme(next: 'dark' | 'light') {
+    theme = next;
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem('yaop.theme', next);
+    } catch {
+      // Storage disabled: the palette still applies for this run.
+    }
+  }
+
+  async function toggleTheme() {
+    const previous = theme;
+    const next = previous === 'dark' ? 'light' : 'dark';
+    // Flip instantly; persisting must not add a delay to something the user sees right away.
+    applyTheme(next);
+    try {
+      await setTheme(next);
+    } catch (cause) {
+      applyTheme(previous);
+      sessionNotice = { kind: 'error', text: errorText(cause) };
+    }
+  }
 
   const connectedCount = $derived(devices.filter((device) => device.state === 'device').length);
   const readyDevices = $derived(devices.filter((device) => device.state === 'device'));
@@ -169,7 +206,10 @@
   let keyboardOnPhone = $state(false);
   // The form below the toolbar owns the unlock flow; it publishes the few values the toolbar
   // needs instead of the toolbar duplicating its state.
-  let keypad = $state<{ toggleForm: () => void; toggleScreen: () => Promise<void> }>();
+  let keypad = $state<{
+    toggleForm: () => void;
+    primaryAction: () => Promise<void>;
+  }>();
   let keypadState = $state<KeypadState>({
     expanded: false,
     screenOn: true,
@@ -202,19 +242,98 @@
     };
   }
 
-  const toolbarBusy = $derived(keypadState.busy || keypadState.screenBusy);
+  // Ctrl+V inside the mirror kicks off a Rust worker (picture → phone). The toolbar carries
+  // its progress; a finished note fades on its own so the serial comes back.
+  let pasteNote = $state<ClipboardPasteNote | null>(null);
+  let pasteClearTimer = 0;
+
+  function showPasteNote(note: ClipboardPasteNote) {
+    clearPasteNote();
+    pasteNote = note;
+    if (note.phase !== 'start') {
+      pasteClearTimer = window.setTimeout(
+        () => {
+          pasteNote = null;
+          pasteClearTimer = 0;
+        },
+        note.phase === 'error' ? 8000 : 5000,
+      );
+    }
+  }
+
+  function clearPasteNote() {
+    if (pasteClearTimer !== 0) {
+      window.clearTimeout(pasteClearTimer);
+      pasteClearTimer = 0;
+    }
+    pasteNote = null;
+  }
+
+  // The chats the phone is offering as a paste destination, read from its own "send to" list.
+  // One click here taps the phone and saves that chat, so the next paste needs no click at all.
+  let chatChoices = $state<ChatPickerEvent | null>(null);
+  let chatChoicesTimer = 0;
+  let chatChoiceBusy = $state<string | null>(null);
+
+  function showChatChoices(event: ChatPickerEvent) {
+    clearChatChoices();
+    chatChoices = event;
+    // Expiry only hides the row; the picker on the phone stays open for a manual tap.
+    chatChoicesTimer = window.setTimeout(() => {
+      chatChoices = null;
+      chatChoicesTimer = 0;
+    }, 25000);
+  }
+
+  function clearChatChoices() {
+    if (chatChoicesTimer !== 0) {
+      window.clearTimeout(chatChoicesTimer);
+      chatChoicesTimer = 0;
+    }
+    chatChoices = null;
+    chatChoiceBusy = null;
+  }
+
+  async function chooseChat(label: string) {
+    const choices = chatChoices;
+    if (!choices || chatChoiceBusy) return;
+    chatChoiceBusy = label;
+    try {
+      showPasteNote({ phase: 'done', text: await pickChatTarget(choices.serial, choices.package, label) });
+      clearChatChoices();
+    } catch (error) {
+      showPasteNote({ phase: 'error', text: String(error) });
+      chatChoiceBusy = null;
+    }
+  }
+
+  const toolbarBusy = $derived(
+    keypadState.busy ||
+      keypadState.screenBusy ||
+      pasteNote?.phase === 'start' ||
+      chatChoiceBusy !== null,
+  );
   const toolbarAttention = $derived(!keypadState.screenOn || keypadState.locked);
   // A phone that locks mid-session is reported by the 30 s watcher (`keyguardUp`), not by
   // the panel: the panel only probes the keyguard while its form is open. The cover has to
   // follow both, or a power-button lock stays a black hole until the form is opened.
   const mirrorLocked = $derived(keypadState.locked || keyguardUp === true);
-  const toolbarHasMessage = $derived(!toolbarBusy && keypadState.message !== null);
+  const toolbarHasMessage = $derived(
+    !toolbarBusy && (keypadState.message !== null || pasteNote !== null),
+  );
+  const toolbarError = $derived(
+    keypadState.messageKind === 'error' || pasteNote?.phase === 'error',
+  );
   const toolbarText = $derived(
     toolbarBusy
       ? keypadState.busy
         ? 'Mengirim kunci…'
-        : 'Mengatur layar…'
-      : (keypadState.message ?? session?.serial ?? ''),
+        : keypadState.screenBusy
+          ? 'Mengatur layar…'
+          : chatChoiceBusy !== null
+            ? 'Mengirim ke chat…'
+            : 'Mengirim gambar…'
+      : (keypadState.message ?? pasteNote?.text ?? session?.serial ?? ''),
   );
 
   let panelCollapsed = $state(false);
@@ -272,7 +391,7 @@
     // Releasing the lock must always reach Rust even if the width already matches.
     if (!lockWidth && !windowWidthLocked && Math.abs(window.innerWidth - target) <= 2) return;
     windowWidthLocked = lockWidth;
-    void setWindowWidth(target, Math.round(minWidth), lockWidth).catch(() => {});
+    void setWindowWidth(target, Math.round(minWidth), lockWidth, true).catch(() => {});
   }
 
   // Opening and closing the panel gets the eased path. Width changes caused by the stage height
@@ -283,7 +402,7 @@
     panelAnimating = true;
     windowWidthLocked = lockWidth;
     try {
-      await animateWindowWidth(Math.round(width), Math.round(minWidth), lockWidth);
+      await animateWindowWidth(Math.round(width), Math.round(minWidth), lockWidth, true);
     } catch {
       // Keep the layout usable even if the OS refuses one frame.
     } finally {
@@ -675,6 +794,14 @@
     void refresh(false);
     void loadKnownWireless();
 
+    if (isTauri) {
+      void getTheme()
+        .then((saved) => {
+          if (saved !== theme) applyTheme(saved);
+        })
+        .catch(() => {});
+    }
+
     void getScrcpyStatus()
       .then((status) => (scrcpy = status))
       .catch(() => {});
@@ -706,6 +833,8 @@
       session = info;
       primeKeypad(info);
       startingSerial = null;
+      clearPasteNote();
+      clearChatChoices();
       // A new phone brings new proportions; they arrive once the scrcpy window settles.
       mirrorAspect = null;
       panelCollapsed = false;
@@ -731,6 +860,8 @@
     const unsubscribeExited = onSessionExited((info) => {
       session = null;
       startingSerial = null;
+      clearPasteNote();
+      clearChatChoices();
       screenOn = null;
       keyguardUp = null;
       mirrorAspect = null;
@@ -782,6 +913,16 @@
       transfer = progress;
     });
 
+    // The Rust worker behind a mirror Ctrl+V (picture → app on screen) reports through this.
+    const unsubscribePaste = onClipboardPaste((note) => {
+      showPasteNote(note);
+    });
+
+    // …and the phone's own destination list through this, so one click can finish it.
+    const unsubscribeChatPicker = onChatPicker((event) => {
+      showChatChoices(event);
+    });
+
     const dragListener = isTauri
       ? getCurrentWebview().onDragDropEvent((event) => {
           if (event.payload.type === 'enter' || event.payload.type === 'over') {
@@ -813,6 +954,8 @@
       void unsubscribeUnlocked.then((stop) => stop());
       void unsubscribeAspect.then((stop) => stop());
       void unsubscribeTransfer.then((stop) => stop());
+      void unsubscribePaste.then((stop) => stop());
+      void unsubscribeChatPicker.then((stop) => stop());
       if (dragListener) void dragListener.then((stop) => stop());
       window.clearInterval(statusTimer);
     };
@@ -843,6 +986,19 @@
   {/if}
 {/snippet}
 
+{#snippet themeIconSvg()}
+  {#if theme === 'dark'}
+    <svg viewBox="0 0 20 20" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="10" cy="10" r="3.4" />
+      <path d="M10 2.6v1.8M10 15.6v1.8M2.6 10h1.8M15.6 10h1.8M4.8 4.8l1.3 1.3M13.9 13.9l1.3 1.3M15.2 4.8l-1.3 1.3M6.1 13.9l-1.3 1.3" />
+    </svg>
+  {:else}
+    <svg viewBox="0 0 20 20" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16.3 12.4A6.6 6.6 0 0 1 7.6 3.7a6.6 6.6 0 1 0 8.7 8.7" />
+    </svg>
+  {/if}
+{/snippet}
+
 <div class="flex h-full overflow-hidden bg-zinc-950 text-zinc-100">
   {#if session && isTauri}
     <!-- Cermin: kotak ini yang dilaporkan ke Rust lewat ResizeObserver, jadi telepon mengisi
@@ -866,7 +1022,7 @@
           class="min-w-0 flex-1 truncate text-[11px] {toolbarBusy
             ? 'text-zinc-400'
             : toolbarHasMessage
-              ? keypadState.messageKind === 'error'
+              ? toolbarError
                 ? 'text-rose-200'
                 : 'text-amber-100'
               : 'font-mono text-zinc-400'}"
@@ -894,56 +1050,33 @@
               <path d="M4 6.5h.5M6 6.5h.5M8 6.5h.5M10 6.5h.5M12 6.5h.5M4.5 9h7" />
             </svg>
           </button>
+          <!-- One button for the phone's screen and its keyguard: a locked phone only ever
+               needs the key, so `primaryAction` reads the keyguard when the screen is up and
+               runs the unlock flow instead of sleeping an already-locked phone. -->
           <button
             type="button"
-            onclick={() => void keypad?.toggleScreen()}
+            onclick={() => void keypad?.primaryAction()}
             disabled={toolbarBusy}
-            title={keypadState.screenOn ? 'Matikan layar fisik HP; mirroring tetap jalan' : 'Bangunkan layar HP'}
-            aria-label={keypadState.screenOn ? 'Matikan layar HP' : 'Bangunkan layar HP'}
-            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 text-zinc-400 transition hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-30"
+            title={mirrorLocked
+              ? 'HP terkunci — coba kunci tersimpan atau buka form kunci'
+              : keypadState.screenOn
+                ? 'Matikan layar fisik HP; mirroring tetap jalan'
+                : 'Bangunkan layar HP'}
+            aria-label={mirrorLocked
+              ? 'Buka kunci HP'
+              : keypadState.screenOn
+                ? 'Matikan layar HP'
+                : 'Bangunkan layar HP'}
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-30 {mirrorLocked
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+              : keypadState.screenOn
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                : 'border-sky-500/40 bg-sky-500/10 text-sky-200'}"
           >
-            {#if keypadState.screenOn}
-              <svg viewBox="0 0 16 16" class="h-3.5 w-3.5 text-amber-300" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-                <circle cx="8" cy="8" r="3" />
-                <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M13 3l-1 1M4 12l-1 1" />
-              </svg>
-            {:else}
-              <svg viewBox="0 0 16 16" class="h-3.5 w-3.5 text-indigo-300" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M13 9.5A5.5 5.5 0 1 1 6.5 3 4.5 4.5 0 0 0 13 9.5Z" />
-              </svg>
-            {/if}
-          </button>
-          <button
-            type="button"
-            onclick={() => keypad?.toggleForm()}
-            disabled={keypadState.busy}
-            aria-expanded={keypadState.expanded}
-            title={keypadState.expanded
-              ? 'Sembunyikan kolom kunci'
-              : keypadState.locked
-                ? 'HP terkunci — buka kolom kunci'
-                : 'Buka kolom kunci'}
-            aria-label={keypadState.expanded ? 'Sembunyikan kolom kunci' : 'Buka kolom kunci'}
-            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-30 {keypadState.expanded
-              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-              : keypadState.locked
-                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                : 'border-white/10 text-zinc-400 hover:text-zinc-200'}"
-          >
-            {#if keypadState.expanded}
-              <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 10l4-4 4 4" />
-              </svg>
-            {:else}
-              <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="7" width="10" height="7" rx="1.5" />
-                {#if keypadState.locked}
-                  <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-                {:else}
-                  <path d="M5.5 7V5a2.5 2.5 0 0 1 4.9-.6" />
-                {/if}
-              </svg>
-            {/if}
+            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+              <path d="M8 2.2v4.6" />
+              <path d="M12.6 5.1a5.2 5.2 0 1 1-9.2 0" />
+            </svg>
           </button>
           <button
             type="button"
@@ -993,8 +1126,50 @@
           </button>
         </div>
       </header>
-      <!-- The toolbar owns every action; the form below it appears only when the lock button
-           asks for it (or the phone is locked), so an open phone costs one row, not three. -->
+      {#if chatChoices}
+        <!-- The phone is sitting on its own "send to" list. One click here finishes that list and
+             saves the chat, so the next paste needs no click at all. Letting the row expire only
+             hides it — the picker on the phone stays open for a manual tap. -->
+        <div class="flex items-center gap-2 border-b border-white/5 px-3 py-2">
+          <p class="shrink-0 text-[11px] text-zinc-500">
+            {#if chatChoices.reason === 'not-found'}
+              Tujuan tersimpan tidak terlihat ·
+            {:else if chatChoices.reason === 'ambiguous'}
+              Nama itu muncul dua kali ·
+            {:else if chatChoices.reason === 'stale'}
+              Daftarnya berubah ·
+            {:else}
+              Pilih chat tujuan ·
+            {/if}
+          </p>
+          <div class="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
+            {#each chatChoices.chats as label (label)}
+              <button
+                type="button"
+                onclick={() => void chooseChat(label)}
+                disabled={chatChoiceBusy !== null}
+                title="Ketuk daftar tujuan di HP dan kirim ke {label}"
+                class="shrink-0 rounded-lg border px-2.5 py-1 text-[11px] transition {chatChoiceBusy === label
+                  ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-200'
+                  : 'border-white/10 text-zinc-300 hover:border-emerald-500/40 hover:text-emerald-300'}"
+              >
+                {label}
+              </button>
+            {/each}
+          </div>
+          <button
+            type="button"
+            onclick={clearChatChoices}
+            title="Tutup — pilih manual di HP"
+            aria-label="Tutup pilihan chat"
+            class="shrink-0 rounded-lg border border-white/10 px-1.5 py-1 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+          >
+            ✕
+          </button>
+        </div>
+      {/if}
+      <!-- The toolbar owns every action; the form below it appears only when the power button
+           runs into a keyguard (or the phone is locked), so an open phone costs one row, not three. -->
       {#key session.serial}
         <KeypadControls
           bind:this={keypad}
@@ -1031,16 +1206,17 @@
             <p class="text-xs font-semibold text-amber-200">HP masih terkunci</p>
             <p class="max-w-xs text-[11px] leading-relaxed text-zinc-400">
               Layar kunci tidak boleh dicerminkan oleh aplikasi apa pun, jadi area ini tetap gelap.
-              Bangunkan layar lalu ketik kunci di panel atas — cermin muncul sendiri begitu HP terbuka.
+              Tekan tombol di bawah — kunci tersimpan dicoba otomatis, dan kolom PIN muncul kalau
+              perlu — cermin muncul sendiri begitu HP terbuka.
             </p>
             <div class="flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
-                onclick={() => void keypad?.toggleScreen()}
+                onclick={() => void keypad?.primaryAction()}
                 disabled={toolbarBusy}
                 class="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-[11px] font-semibold text-emerald-200 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Bangunkan layar
+                {keypadState.screenOn ? 'Buka kunci HP' : 'Bangunkan layar'}
               </button>
               {#if !keypadState.expanded}
                 <button
@@ -1128,6 +1304,17 @@
           </span>
         </div>
       </div>
+
+      <button
+        type="button"
+        onclick={() => void toggleTheme()}
+        title={theme === 'dark' ? 'Mode terang' : 'Mode gelap'}
+        aria-label={theme === 'dark' ? 'Beralih ke mode terang' : 'Beralih ke mode gelap'}
+        class="mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200 max-lg:mt-1 max-lg:justify-center max-lg:px-0"
+      >
+        {@render themeIconSvg()}
+        <span class="max-lg:hidden">{theme === 'dark' ? 'Mode terang' : 'Mode gelap'}</span>
+      </button>
     </div>
   </aside>
   {/if}
@@ -1157,6 +1344,17 @@
             <span class="sr-only">{item.label}</span>
           </button>
         {/each}
+        <!-- Sidebar tempat togglenya biasa tidak dirender selama cermin jalan; nav ini satu-satunya
+             permukaan yang tersisa, jadi ganti tema harus bisa dari sini juga. -->
+        <button
+          type="button"
+          onclick={() => void toggleTheme()}
+          class="{iconNavClass(false)} ml-auto"
+          title={theme === 'dark' ? 'Mode terang' : 'Mode gelap'}
+          aria-label={theme === 'dark' ? 'Beralih ke mode terang' : 'Beralih ke mode gelap'}
+        >
+          {@render themeIconSvg()}
+        </button>
       </nav>
     {/if}
     {#if page === 'devices'}

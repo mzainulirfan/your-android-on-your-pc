@@ -33,10 +33,19 @@ pub struct Settings {
     /// 2.4 GHz link.
     #[serde(default = "default_true")]
     pub audio_enabled: bool,
+    /// UI color theme: `"dark"` or `"light"`. The frontend reads it before paint (through
+    /// the `get_theme` command plus a localStorage mirror) so the window never flashes the
+    /// wrong palette on boot.
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_theme() -> String {
+    "dark".to_string()
 }
 
 fn default_max_fps() -> u32 {
@@ -62,6 +71,7 @@ impl Default for Settings {
             mirror_screen_off: false,
             low_latency: false,
             audio_enabled: true,
+            theme: default_theme(),
         }
     }
 }
@@ -200,6 +210,12 @@ fn validate(settings: &mut Settings) -> Result<(), String> {
         );
     }
 
+    // An unknown theme value is repaired silently rather than rejected: the CSS layer only
+    // knows two palettes, and a stale or hand-edited file should not fail the whole save.
+    if settings.theme != "dark" && settings.theme != "light" {
+        settings.theme = default_theme();
+    }
+
     let directory = PathBuf::from(settings.download_dir.trim());
     if !directory.is_absolute() || !directory.is_dir() {
         return Err(format!(
@@ -254,6 +270,32 @@ mod tests {
         assert_eq!(settings.max_size, 0);
         assert!(!settings.low_latency);
         assert!(settings.audio_enabled);
+        assert_eq!(settings.theme, "dark");
+    }
+
+    #[test]
+    fn theme_survives_serialization() {
+        let mut settings = Settings::default();
+        settings.theme = "light".to_string();
+        let text = serde_json::to_string(&settings).expect("theme harus dapat ditulis");
+        let restored: Settings =
+            serde_json::from_str(&text).expect("theme harus dapat dibaca kembali");
+        assert_eq!(restored.theme, "light");
+    }
+
+    #[test]
+    fn unknown_theme_values_are_repaired_to_dark() {
+        let mut settings = Settings {
+            download_dir: std::env::temp_dir().display().to_string(),
+            ..Settings::default()
+        };
+        settings.theme = "neon".to_string();
+        assert!(validate(&mut settings).is_ok());
+        assert_eq!(settings.theme, "dark");
+
+        settings.theme = "light".to_string();
+        assert!(validate(&mut settings).is_ok());
+        assert_eq!(settings.theme, "light");
     }
 
     #[test]

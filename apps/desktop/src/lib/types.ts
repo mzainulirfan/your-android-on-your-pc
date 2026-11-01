@@ -80,6 +80,33 @@ export interface ImageSendResult {
   shareOpened: boolean;
 }
 
+/** Progress of the Ctrl+V image hand-off; one `start` is followed by one `done` or `error`. */
+export interface ClipboardPasteNote {
+  phase: 'start' | 'done' | 'error';
+  text: string;
+}
+
+/**
+ * The chats the phone is offering as a paste destination. Labels only: tap coordinates are
+ * recomputed from a fresh read of the device when one is chosen, so a click can never act on a
+ * list that has already scrolled away.
+ */
+export interface ChatPickerEvent {
+  serial: string;
+  package: string;
+  /** `new` = no destination saved yet, `stale` = the list moved before the click landed. */
+  reason: 'new' | 'not-found' | 'ambiguous' | 'stale';
+  chats: string[];
+}
+
+/** Where Ctrl+V goes on this device and app, remembered from one click in the panel. */
+export interface ChatTarget {
+  id: string;
+  serial: string;
+  package: string;
+  label: string;
+}
+
 export interface AndroidEntry {
   name: string;
   path: string;
@@ -153,6 +180,9 @@ export interface Settings {
   mirrorScreenOff: boolean;
   lowLatency: boolean;
   audioEnabled: boolean;
+  /** Saved UI palette. Optional: the Settings page form never sends it, the app reads it
+   * through `get_theme` instead. */
+  theme?: 'dark' | 'light';
 }
 
 export interface Diagnostics {

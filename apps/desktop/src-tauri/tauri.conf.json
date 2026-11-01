@@ -20,7 +20,6 @@
         "minHeight": 560,
         "center": true,
         "resizable": true,
-        "theme": "Dark",
         "dragDropEnabled": true
       }
     ],

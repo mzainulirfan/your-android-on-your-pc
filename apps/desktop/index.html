@@ -1,10 +1,20 @@
 <!doctype html>
-<html lang="id" class="dark">
+<html lang="id" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>Your Android on Your PC</title>
+    <script>
+      // Paint the saved palette before the first frame so a light-mode app never flashes
+      // dark on boot. App.svelte reconciles this with settings.json once IPC is up.
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('yaop.theme') === 'light' ? 'light' : 'dark';
+      } catch {
+        /* private mode / disabled storage: stay dark */
+      }
+    </script>
   </head>
   <body class="bg-zinc-950">
     <div id="app"></div>

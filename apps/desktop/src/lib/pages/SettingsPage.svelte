@@ -3,13 +3,15 @@
   import {
     clearCredentials,
     deleteCredential,
+    getAllChatTargets,
     getAllCredentials,
     getDiagnostics,
     getSettings,
     openDownloadDir,
+    removeChatTarget,
     saveSettings,
   } from '../api';
-  import type { Diagnostics, SavedCredential } from '../types';
+  import type { ChatTarget, Diagnostics, SavedCredential } from '../types';
 
   interface Props {
     onNotice: (kind: 'info' | 'error', text: string) => void;
@@ -61,6 +63,10 @@
   // Destructive key removal asks once: the button label changes for three seconds.
   let confirmKey = $state<string | null>(null);
   let confirmTimer: number | undefined;
+  // Remembered Ctrl+V destinations, pruned by hand exactly like the saved keys.
+  let chatTargets = $state<ChatTarget[]>([]);
+  let chatTargetsLoaded = $state(false);
+  let chatTargetsBusy = $state(false);
   let loading = $state(true);
   let saving = $state(false);
   let error = $state<string | null>(null);
@@ -84,6 +90,16 @@
   const keysByDevice = $derived.by(() => {
     const groups = new Map<string, SavedCredential[]>();
     for (const entry of keys) {
+      const list = groups.get(entry.serial) ?? [];
+      list.push(entry);
+      groups.set(entry.serial, list);
+    }
+    return [...groups.entries()];
+  });
+
+  const targetsByDevice = $derived.by(() => {
+    const groups = new Map<string, ChatTarget[]>();
+    for (const entry of chatTargets) {
       const list = groups.get(entry.serial) ?? [];
       list.push(entry);
       groups.set(entry.serial, list);
@@ -120,6 +136,7 @@
       loading = false;
     }
     void loadKeys();
+    void loadChatTargets();
   }
 
   async function loadKeys() {
@@ -129,6 +146,28 @@
       onNotice('error', errorText(cause));
     } finally {
       keysLoaded = true;
+    }
+  }
+
+  async function loadChatTargets() {
+    try {
+      chatTargets = await getAllChatTargets();
+    } catch (cause) {
+      onNotice('error', errorText(cause));
+    } finally {
+      chatTargetsLoaded = true;
+    }
+  }
+
+  async function removeTarget(id: string) {
+    chatTargetsBusy = true;
+    try {
+      await removeChatTarget(id);
+      chatTargets = chatTargets.filter((entry) => entry.id !== id);
+    } catch (cause) {
+      onNotice('error', errorText(cause));
+    } finally {
+      chatTargetsBusy = false;
     }
   }
 
@@ -593,6 +632,79 @@
                         : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200'}"
                     >
                       {confirmKey === entry.id ? 'Hapus?' : '✕'}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <section class="rounded-2xl border border-white/5 bg-zinc-900/40 p-4 @2xl:p-5">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950/60">
+          <svg viewBox="0 0 20 20" class="h-[18px] w-[18px] text-emerald-300/80" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 5.5h14v9H8l-3.5 3v-3H3z" />
+            <path d="M7 10h6" />
+          </svg>
+        </span>
+        <div class="min-w-0 flex-1">
+          <h2 class="flex items-center gap-2 text-sm font-semibold">
+            Tujuan chat
+            {#if chatTargets.length > 0}
+              <span class="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400">
+                {chatTargets.length}
+              </span>
+            {/if}
+          </h2>
+          <p class="mt-0.5 text-[11px] leading-relaxed text-zinc-500">
+            Chat yang pernah dipilih setelah Ctrl+V. Paste berikutnya mengetuk daftar di HP sendiri, tapi hanya kalau
+            nama chat ini terlihat tepat satu kali — kalau tidak, pilihan muncul lagi dan tidak ada yang terkirim.
+          </p>
+        </div>
+      </div>
+
+      {#if !chatTargetsLoaded}
+        <p class="mt-4 text-xs text-zinc-500">Memuat...</p>
+      {:else if chatTargets.length === 0}
+        <p class="mt-4 rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-zinc-600">
+          Belum ada tujuan chat. Tekan Ctrl+V di cermin lalu pilih salah satu chip nama chat di toolbar.
+        </p>
+      {:else}
+        <div class="mt-4 space-y-3">
+          {#each targetsByDevice as [serial, entries] (serial)}
+            <div class="rounded-xl border border-white/5 bg-zinc-950/40 px-4">
+              <p class="border-b border-white/5 py-2.5 font-mono text-[10px] tracking-wider text-zinc-500">
+                {serial}
+                <span class="ml-1 text-zinc-600">· {entries.length} tujuan</span>
+              </p>
+              <ul class="divide-y divide-white/5">
+                {#each entries as entry (entry.id)}
+                  {@const confirming = confirmKey === `tujuan:${entry.id}`}
+                  <li class="flex items-center gap-3 py-2.5">
+                    <span class="shrink-0 rounded bg-white/[0.05] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-emerald-300/80">
+                      {entry.package.split('.')[1] ?? entry.package}
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-xs text-zinc-200" title={entry.label}>{entry.label}</span>
+                      <span class="block truncate font-mono text-[10px] text-zinc-600" title={entry.package}>
+                        {entry.package}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onclick={() => askConfirm(`tujuan:${entry.id}`, () => void removeTarget(entry.id))}
+                      disabled={chatTargetsBusy}
+                      aria-label={confirming
+                        ? `Konfirmasi hapus tujuan ${entry.label} untuk ${entry.serial}`
+                        : `Hapus tujuan ${entry.label} untuk ${entry.serial}`}
+                      class="shrink-0 rounded-lg border px-2 py-1 text-[11px] transition disabled:cursor-not-allowed disabled:opacity-40 {confirming
+                        ? 'border-rose-500/40 bg-rose-500/20 text-rose-100'
+                        : 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200'}"
+                    >
+                      {confirming ? 'Hapus?' : '✕'}
                     </button>
                   </li>
                 {/each}

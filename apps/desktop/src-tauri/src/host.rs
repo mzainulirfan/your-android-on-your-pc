@@ -52,6 +52,15 @@ static ASPECT: Mutex<Option<f64>> = Mutex::new(None);
 /// Set when the user hid the video, so a window move does not map it back.
 static VIDEO_WANTED: AtomicBool = AtomicBool::new(true);
 
+/// Handle kept for the window procedure, which gets no parameters of its own: the Ctrl+V
+/// image hand-off needs it to push the file and to tell the page how it went.
+#[cfg(windows)]
+static APP: Mutex<Option<AppHandle>> = Mutex::new(None);
+/// One Ctrl+V, one hand-off. Holding the key repeats the message, and a second tap should
+/// not queue a second push of the same picture.
+#[cfg(windows)]
+static LAST_IMAGE_PASTE: Mutex<Option<Instant>> = Mutex::new(None);
+
 /// One embedded mirror at a time: the scrcpy top-level window becomes a child of the app
 /// window, so the pair is one frame, one shadow and one taskbar entry. Every entry point has to
 /// tolerate `is_attached() == false`, because the fold can fail and the mirror then stands on
@@ -248,6 +257,9 @@ pub fn begin(app: &AppHandle, serial: &str, locked: bool) {
     {
         if let Ok(mut guard) = SERIAL.lock() {
             *guard = Some(serial.to_string());
+        }
+        if let Ok(mut guard) = APP.lock() {
+            *guard = Some(app.clone());
         }
         LOCKED_AT_START.store(locked, Ordering::SeqCst);
         WANTED.store(true, Ordering::SeqCst);
@@ -587,7 +599,9 @@ unsafe extern "system" fn focus_on_mirror_click(
     _data: usize,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::LRESULT;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU, VK_TAB};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_MENU, VK_TAB, VK_V,
+    };
     use windows::Win32::UI::Shell::DefSubclassProc;
     use windows::Win32::UI::WindowsAndMessaging::{
         PostMessageW, WA_INACTIVE, WM_ACTIVATE, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN,
@@ -637,6 +651,22 @@ unsafe extern "system" fn focus_on_mirror_click(
     let relay = tracked();
     if let Some((_, child)) = relay {
         if msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP {
+            // Ctrl+V while the mirror holds the keyboard is the phone's paste gesture. Text
+            // goes on untouched (scrcpy pastes it), but the phone's clipboard can never hold
+            // a picture from outside Android — so when the PC clipboard is picture-only, the
+            // keystroke stops here and starts the hand-off to the app on screen instead.
+            // Repeats are swallowed with the first press; keys the page types for its own
+            // fields never reach this procedure (WebView2 keeps that focus).
+            if msg == WM_KEYDOWN
+                && wparam.0 as u32 == VK_V.0 as u32
+                && (unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } as i16) < 0
+                && clipboard_holds_image()
+            {
+                if (lparam.0 as u32) & (1 << 30) == 0 {
+                    start_image_paste();
+                }
+                return LRESULT(0);
+            }
             // Alt+Tab is the Windows switcher's own gesture; the OS opens it regardless of
             // what this window does with the message. Forwarding only teaches the phone an
             // Alt+Tab nobody typed there, and strands Alt as soon as the switcher eats the
@@ -719,6 +749,135 @@ fn release_held_keys(child: windows::Win32::Foundation::HWND) {
             )
         };
     }
+}
+
+/// Drive scrcpy's own screen shortcuts on the embedded video: Alt+O puts the phone's
+/// display away while the session keeps mirroring, Alt+Shift+O lights it back up. The
+/// phone stays awake, so — unlike `adb shell input keyevent KEYCODE_SLEEP` — no keyguard
+/// is armed and the mirror keeps painting a usable picture. The messages are posted to
+/// the child exactly like the keyboard relay posts physical keys (Alt makes the following
+/// keys system keys, the scancode in bits 16–23 names them, the transition bits mark the
+/// releases), and scrcpy matches the shortcut on the modifier state SDL derives from that
+/// sequence — the same path the physical Alt+H → HOME keystroke proved work.
+pub fn screen_power_via_scrcpy(on: bool) -> Result<(), String> {
+    let Some((_, child)) = tracked() else {
+        return Err("Cermin tidak tertanam di jendela ini.".to_string());
+    };
+    #[cfg(windows)]
+    {
+        post_screen_shortcut(hwnd(child), on);
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (child, on);
+        Err("Cermin hanya tersedia di Windows.".to_string())
+    }
+}
+
+#[cfg(windows)]
+fn post_screen_shortcut(child: windows::Win32::Foundation::HWND, on: bool) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        MapVirtualKeyW, VK_LMENU, VK_LSHIFT, VK_O, MAPVK_VK_TO_VSC,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        PostMessageW, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    };
+
+    let send = |msg: u32, vk: u32| {
+        let alt = msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
+        let up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+        let scan = unsafe { MapVirtualKeyW(vk, MAPVK_VK_TO_VSC) };
+        let mut lparam = 1u32 | (scan << 16);
+        if alt {
+            lparam |= 1 << 29;
+        }
+        if up {
+            lparam |= (1 << 30) | (1 << 31);
+        }
+        let _ = unsafe { PostMessageW(child, msg, WPARAM(vk as usize), LPARAM(lparam as isize)) };
+    };
+
+    let menu = VK_LMENU.0 as u32;
+    let letter = VK_O.0 as u32;
+    // Alt down first: SDL must already hold the modifier when it reads the letter's mod
+    // state. The releases come back in the opposite order.
+    send(WM_SYSKEYDOWN, menu);
+    if on {
+        send(WM_KEYDOWN, VK_LSHIFT.0 as u32);
+    }
+    send(WM_SYSKEYDOWN, letter);
+    send(WM_SYSKEYUP, letter);
+    if on {
+        send(WM_KEYUP, VK_LSHIFT.0 as u32);
+    }
+    send(WM_SYSKEYUP, menu);
+}
+
+/// Whether the PC clipboard currently holds a picture and nothing else readable as text.
+/// Only the format bits are queried — `IsClipboardFormatAvailable` copies no data, which
+/// keeps this safe to answer inside the window procedure. Text wins when both are present:
+/// in a chat field a typed copy is the likelier intent, and scrcpy's text paste already
+/// serves it. A clipboard that refuses to open (another process holds it) answers false, so
+/// the keystroke falls through to the normal relay instead of stalling the keyboard.
+#[cfg(windows)]
+fn clipboard_holds_image() -> bool {
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, IsClipboardFormatAvailable, OpenClipboard,
+    };
+    use windows::Win32::System::Ole::{CF_DIB, CF_DIBV5, CF_UNICODETEXT};
+
+    unsafe {
+        if OpenClipboard(None).is_err() {
+            return false;
+        }
+        let picture = IsClipboardFormatAvailable(CF_DIB.0 as u32).is_ok()
+            || IsClipboardFormatAvailable(CF_DIBV5.0 as u32).is_ok();
+        let text = IsClipboardFormatAvailable(CF_UNICODETEXT.0 as u32).is_ok();
+        let _ = CloseClipboard();
+        picture && !text
+    }
+}
+
+/// Hand the PC clipboard's picture to the app the phone is looking at (see
+/// `clipboard_image::paste_into_foreground`). The push and the two ADB reads take up to a
+/// few seconds — over Wi-Fi longer — so the work leaves the UI thread immediately and the
+/// page follows along through the `clipboard-paste` events.
+#[cfg(windows)]
+fn start_image_paste() {
+    use crate::clipboard_image::PasteNote;
+
+    let due = LAST_IMAGE_PASTE
+        .lock()
+        .map(|mut last| {
+            let now = Instant::now();
+            let due = last
+                .as_ref()
+                .map_or(true, |seen| now.duration_since(*seen) >= Duration::from_millis(800));
+            if due {
+                *last = Some(now);
+            }
+            due
+        })
+        .unwrap_or(false);
+    if !due {
+        return;
+    }
+    let Some(app) = APP.lock().ok().and_then(|guard| guard.clone()) else {
+        return;
+    };
+    let Some(serial) = target_serial() else {
+        return;
+    };
+    thread::spawn(move || {
+        let _ = app.emit("clipboard-paste", PasteNote::start());
+        let note = match crate::clipboard_image::paste_into_foreground(&app, &serial) {
+            Ok(text) => PasteNote::done(text),
+            Err(error) => PasteNote::error(error),
+        };
+        let _ = app.emit("clipboard-paste", note);
+    });
 }
 
 #[cfg(windows)]

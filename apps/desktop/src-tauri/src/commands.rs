@@ -1,4 +1,5 @@
 use crate::adb::{self, AdbStatus, WirelessInfo};
+use crate::chat_target::{self, TargetView};
 use crate::clipboard_image::{self, ImageSendResult};
 use crate::credentials::{self, CredentialView};
 use crate::files::{self, AndroidEntry};
@@ -134,6 +135,15 @@ pub async fn set_screen_power(serial: String, sleep: bool) -> Result<adb::WakeSt
         .map_err(|error| format!("Gagal mengubah status layar: {error}"))?
 }
 
+/// Put the phone's display away (or back) through the live scrcpy session itself instead of
+/// a key event: the phone stays awake, so the keyguard is never armed and the mirror keeps
+/// showing a usable screen. Fails when no mirror is embedded; the caller then falls back to
+/// the plain ADB sleep. `on = false` hides the display, `on = true` lights it.
+#[tauri::command]
+pub fn scrcpy_screen_power(on: bool) -> Result<(), String> {
+    crate::host::screen_power_via_scrcpy(on)
+}
+
 #[tauri::command]
 pub async fn open_find_device(serial: String) -> Result<LocateReport, String> {
     tauri::async_runtime::spawn_blocking(move || locate::find_device(&serial))
@@ -222,11 +232,11 @@ fn fit_in_work_area(x: i32, outer_width: i32, work_left: i32, work_right: i32) -
     x.max(work_left)
 }
 
-/// Keep the window's left edge as the resize origin (it grows to the right), but never let
-/// the admin panel run past the current monitor's work area. When the window is flush against
-/// the left edge it simply expands right; when there is no room on the right the whole frame
-/// slides left just enough to keep the panel reachable.
-fn plan_window_frame(window: &WebviewWindow, target_width: f64) -> Result<WindowFrame, String> {
+/// Plan a width change. `dock_right` moves the resize origin from the left edge to the
+/// monitor's right edge: the frame grows leftward and shrinks rightward, so folding the
+/// admin panel parks the phone against the side of the screen instead of leaving it where
+/// the wide window started.
+fn plan_window_frame(window: &WebviewWindow, target_width: f64, dock_right: bool) -> Result<WindowFrame, String> {
     let scale = window
         .scale_factor()
         .map_err(|error| format!("Gagal membaca skala jendela: {error}"))?;
@@ -248,6 +258,11 @@ fn plan_window_frame(window: &WebviewWindow, target_width: f64) -> Result<Window
         let work = *monitor.work_area();
         let left = work.position.x;
         let right = work.position.x + work.size.width as i32;
+        // Docked: the frame's right edge becomes the anchor, so it shrinks toward the screen's
+        // right and grows leftward. `fit_in_work_area` below still clamps a too-wide frame.
+        if dock_right {
+            target_x = right - target_outer_width;
+        }
         target_x = fit_in_work_area(target_x, target_outer_width, left, right);
     }
 
@@ -306,6 +321,7 @@ pub fn set_window_width(
     width: f64,
     min_width: f64,
     lock_width: bool,
+    dock_right: bool,
 ) -> Result<(), String> {
     let inside = |value: f64| value.is_finite() && (160.0..=8192.0).contains(&value);
     if !inside(width) || !inside(min_width) {
@@ -318,7 +334,7 @@ pub fn set_window_width(
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Jendela utama tidak tersedia.".to_string())?;
-    let frame = plan_window_frame(&window, width)?;
+    let frame = plan_window_frame(&window, width, dock_right)?;
 
     // Release any previous upper bound before moving: a max width left from the last locked
     // frame would clamp a window that has to grow because the phone got taller.
@@ -351,9 +367,6 @@ pub fn fit_window_height(app: AppHandle) -> Result<(), String> {
     let outer = window
         .outer_size()
         .map_err(|error| format!("Gagal membaca ukuran luar jendela: {error}"))?;
-    let position = window
-        .outer_position()
-        .map_err(|error| format!("Gagal membaca posisi jendela: {error}"))?;
     let monitor = window
         .current_monitor()
         .map_err(|error| format!("Gagal membaca monitor: {error}"))?
@@ -363,11 +376,14 @@ pub fn fit_window_height(app: AppHandle) -> Result<(), String> {
     let non_client_height = outer.height.saturating_sub(inner.height) as i32;
     let target_inner_height =
         (work.size.height as i32 - non_client_height).max(1) as f64 / scale;
+    // Dock the frame to the screen's right edge for the session: every later panel
+    // fold/grow keeps this right edge, so the phone mirror behaves like a right sidebar.
+    let work_right = work.position.x + work.size.width as i32;
     let x = fit_in_work_area(
-        position.x,
+        work_right - outer.width as i32,
         outer.width as i32,
         work.position.x,
-        work.position.x + work.size.width as i32,
+        work_right,
     );
 
     window
@@ -399,6 +415,7 @@ pub async fn animate_window_width(
     width: f64,
     min_width: f64,
     lock_width: bool,
+    dock_right: bool,
 ) -> Result<(), String> {
     let inside = |value: f64| value.is_finite() && (160.0..=8192.0).contains(&value);
     if !inside(width) || !inside(min_width) {
@@ -412,7 +429,7 @@ pub async fn animate_window_width(
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "Jendela utama tidak tersedia.".to_string())?;
-        animate_window_frame(window, width, min_width, lock_width, generation)
+        animate_window_frame(window, width, min_width, lock_width, dock_right, generation)
     })
     .await
     .map_err(|error| format!("Gagal menganimasikan jendela: {error}"))?
@@ -423,9 +440,10 @@ fn animate_window_frame(
     width: f64,
     min_width: f64,
     lock_width: bool,
+    dock_right: bool,
     generation: u64,
 ) -> Result<(), String> {
-    let frame = plan_window_frame(&window, width)?;
+    let frame = plan_window_frame(&window, width, dock_right)?;
 
     // Intermediate widths must be allowed even when the final frame is locked again.
     window
@@ -624,6 +642,33 @@ pub async fn send_clipboard_image(
     .map_err(|error| format!("Kirim gambar gagal dijalankan: {error}"))?
 }
 
+/// The user clicked a chat the panel offered. Read the phone again and finish its destination
+/// list, then keep that chat as where this device sends to. Refusing to tap an unread or changed
+/// list is the point: the answer comes from a fresh dump, not from the list drawn seconds ago.
+#[tauri::command]
+pub async fn pick_chat_target(
+    app: AppHandle,
+    serial: String,
+    package: String,
+    label: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        chat_target::resolve_by_choice(&app, &serial, &package, &label)
+    })
+    .await
+    .map_err(|error| format!("Pilihan chat gagal dijalankan: {error}"))?
+}
+
+#[tauri::command]
+pub fn get_all_chat_targets(app: AppHandle) -> Vec<TargetView> {
+    chat_target::all(&app)
+}
+
+#[tauri::command]
+pub fn remove_chat_target(app: AppHandle, id: String) -> Result<(), String> {
+    chat_target::remove(&app, &id)
+}
+
 /// Mount-time badge: path only. `scrcpy --version` starts SDL and its DLLs, which is too
 /// much work just to draw a status dot; the version stays available in Diagnostics.
 #[tauri::command]
@@ -669,8 +714,62 @@ pub fn get_settings(app: AppHandle) -> Settings {
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
+pub fn save_settings(app: AppHandle, mut settings: Settings) -> Result<Settings, String> {
+    // The Settings page form never carries the theme (its toggle lives in the sidebar and
+    // saves itself), so a settings write must not be allowed to reset it to the serde default.
+    settings.theme = settings::load(&app).theme;
     crate::settings::save(&app, settings)
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Theme {
+    Dark,
+    Light,
+}
+
+impl Theme {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "dark" => Some(Self::Dark),
+            "light" => Some(Self::Light),
+            _ => None,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Light => "light",
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_theme(app: AppHandle) -> String {
+    settings::load(&app).theme
+}
+
+#[tauri::command]
+pub fn set_theme(app: AppHandle, theme: String) -> Result<String, String> {
+    let Some(parsed) = Theme::parse(&theme) else {
+        return Err("Tema hanya mendukung 'dark' atau 'light'.".to_string());
+    };
+
+    let mut settings = settings::load(&app);
+    settings.theme = parsed.as_str().to_string();
+    crate::settings::save(&app, settings)?;
+
+    // The native frame (title bar on standalone fallbacks, tray menus) should follow the
+    // page; a failure here is cosmetic, the persisted theme is what the frontend reads.
+    if let Some(window) = app.get_webview_window("main") {
+        let native = match parsed {
+            Theme::Dark => tauri::Theme::Dark,
+            Theme::Light => tauri::Theme::Light,
+        };
+        let _ = window.set_theme(Some(native));
+    }
+
+    Ok(parsed.as_str().to_string())
 }
 
 #[tauri::command]

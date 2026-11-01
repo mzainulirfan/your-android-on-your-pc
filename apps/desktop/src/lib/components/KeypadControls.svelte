@@ -12,6 +12,7 @@
     listCredentials,
     reportUnlocked,
     saveCredential,
+    scrcpyScreenPower,
     screenState,
     setKeyboardOwner,
     setScreenPower,
@@ -106,6 +107,16 @@
   const headline = $derived(notice?.text ?? (serial ? `Panel · ${serial}` : 'Panel Kontrol'));
   // Amber means the user has something to do (screen off or keyguard up), not just "screen off".
   const dotTone = $derived(screenOn && notice?.kind !== 'locked' ? 'bg-emerald-400' : 'bg-amber-400');
+  // Power button tone reads like the toolbar's: amber = the keyguard needs its key,
+  // emerald = screen lit (press dims it), sky = screen dark (press lights it). Each carries
+  // its own border/bg/text so it never collides with the neutral `square` colors.
+  const powerTone = $derived(
+    notice?.kind === 'locked'
+      ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
+      : screenOn
+        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+        : 'border-sky-500/40 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20',
+  );
 
   const digitsOnly = $derived(secret.length > 0 && /^[0-9]+$/.test(secret));
   const canSend = $derived(secret.length > 0 && (!digitsOnly || secret.length >= MIN_PIN));
@@ -239,6 +250,18 @@
       busyId = null;
     }
     return true;
+  }
+
+  /**
+   * The key path both toolbar shapes take once the phone turns out to be locked: one try
+   * with the newest stored key, and only then the form for typing one.
+   */
+  async function unlockFlow() {
+    const list = await refreshSaved();
+    if (!(await autoUnlock(list))) {
+      expand();
+      notice = { kind: 'locked', text: 'Layar terkunci — pilih atau ketik kunci.' };
+    }
   }
 
   async function watchUnlock() {
@@ -410,9 +433,9 @@
     }
   }
 
-  /** Toolbar hook: wake the phone, or put its screen to sleep while mirroring continues. */
-  export async function toggleScreen() {
-    if (!serial || screenBusy) return;
+  /** Plain ADB sleep/wake, for the standalone Home card or when the mirror fell back. */
+  async function adbToggleScreen() {
+    if (!serial) return;
     screenBusy = true;
     notice = null;
     const sleep = screenOn;
@@ -427,11 +450,7 @@
       } else if (state.keyguardUp) {
         // Waking into a lock screen is the same situation as opening a locked panel, so a
         // remembered key opens it here too — the form only comes back if that key fails.
-        const list = await refreshSaved();
-        if (!(await autoUnlock(list))) {
-          expand();
-          notice = { kind: 'locked', text: 'Layar terkunci — pilih atau ketik kunci.' };
-        }
+        await unlockFlow();
       } else {
         // No keyguard to dismiss: the panel has nothing to ask, so it stays folded and the
         // keyboard goes back to the phone.
@@ -443,6 +462,63 @@
     } finally {
       screenBusy = false;
     }
+  }
+
+  /**
+   * Toolbar hook: dim or light the screen. Inside a session the panel dims through scrcpy's
+   * own shortcut rather than `KEYCODE_SLEEP`: the phone stays awake, so no keyguard is armed
+   * and the mirror keeps painting instead of going black behind the "HP masih terkunci" card.
+   * If the mirror is not embedded (the fold failed, so it is a floating window) there is no
+   * shortcut to reach and the plain ADB toggle is used instead.
+   */
+  export async function toggleScreen() {
+    if (!serial || screenBusy) return;
+    if (embedded) {
+      screenBusy = true;
+      notice = null;
+      const turnOn = !screenOn;
+      let reached = true;
+      try {
+        await scrcpyScreenPower(turnOn);
+        screenOn = turnOn;
+        notice = turnOn
+          ? { kind: 'ok', text: 'Layar terbuka.' }
+          : { kind: 'ok', text: 'Layar HP dipadamkan · mirror tetap jalan, HP tidak terkunci.' };
+      } catch {
+        reached = false;
+      }
+      screenBusy = false;
+      if (!reached) await adbToggleScreen();
+      return;
+    }
+    await adbToggleScreen();
+  }
+
+  /**
+   * The toolbar's single screen+key button. A locked phone only ever needs its key, so when
+   * the screen is up the keyguard is read first: locked runs the key flow, anything else
+   * (screen down, unlocked, or a failed read) keeps the plain power behavior — and
+   * `toggleScreen` decides between the session's own no-lock dim and a real ADB sleep.
+   */
+  export async function primaryAction() {
+    if (!serial || screenBusy || busy) return;
+    if (screenOn) {
+      screenBusy = true;
+      let lockedNow = false;
+      try {
+        lockedNow = await keyguardLocked(serial);
+      } catch {
+        // A failed read must not eat the power button; fall through to sleeping.
+      } finally {
+        screenBusy = false;
+      }
+      if (lockedNow) {
+        notice = null;
+        await unlockFlow();
+        return;
+      }
+    }
+    await toggleScreen();
   }
 
   function onKeydown(event: KeyboardEvent) {
@@ -461,6 +537,10 @@
     'flex h-7 shrink-0 items-center overflow-hidden rounded-full border border-emerald-500/25 bg-emerald-500/10';
   const square =
     'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-zinc-300 transition hover:bg-white/10 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-30';
+  // The power button's layout without the neutral colors — `powerTone` supplies those, and
+  // stacking two sets of border/bg/text utilities would leave the winner to chance.
+  const squarePlain =
+    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition disabled:cursor-not-allowed disabled:opacity-30';
 </script>
 
 {#if !embedded || !compact}
@@ -524,22 +604,16 @@
         {/if}
         <button
           type="button"
-          onclick={() => void toggleScreen()}
+          onclick={() => void primaryAction()}
           disabled={!serial || screenBusy || busy}
-          title={screenOn ? 'Matikan layar fisik HP; mirroring tetap jalan' : 'Bangunkan layar HP'}
+          title={screenOn ? 'Matikan layar HP; terkunci saat dinyalakan lagi' : 'Bangunkan layar HP'}
           aria-label={screenOn ? 'Matikan layar HP' : 'Bangunkan layar HP'}
-          class={square}
+          class="{squarePlain} {powerTone}"
         >
-          {#if screenOn}
-            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5 text-amber-300" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-              <circle cx="8" cy="8" r="3" />
-              <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M13 3l-1 1M4 12l-1 1" />
-            </svg>
-          {:else}
-            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5 text-indigo-300" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M13 9.5A5.5 5.5 0 1 1 6.5 3 4.5 4.5 0 0 0 13 9.5Z" />
-            </svg>
-          {/if}
+          <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <path d="M8 2.2v4.6" />
+            <path d="M12.6 5.1a5.2 5.2 0 1 1-9.2 0" />
+          </svg>
         </button>
       </div>
     {/if}
@@ -625,6 +699,22 @@
         </svg>
         <span>Ingat</span>
       </button>
+      {#if embedded}
+        <!-- In the session the toolbar no longer carries a fold button of its own; the form
+             closes itself. -->
+        <button
+          type="button"
+          onclick={() => void fold()}
+          disabled={busy}
+          title="Sembunyikan kolom kunci"
+          aria-label="Sembunyikan kolom kunci"
+          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-zinc-400 transition hover:bg-white/10 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 10l4-4 4 4" />
+          </svg>
+        </button>
+      {/if}
     </div>
 
     {#if saved.length}

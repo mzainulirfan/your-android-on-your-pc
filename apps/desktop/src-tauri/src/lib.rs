@@ -1,4 +1,5 @@
 mod adb;
+mod chat_target;
 mod clipboard_image;
 mod commands;
 mod credentials;
@@ -78,6 +79,7 @@ pub fn run() {
             commands::get_known_wireless,
             commands::forget_wireless,
             commands::set_screen_power,
+            commands::scrcpy_screen_power,
             commands::open_find_device,
             commands::unlock_device,
             commands::list_credentials,
@@ -103,12 +105,17 @@ pub fn run() {
             commands::list_android_files,
             commands::capture_screenshot,
             commands::send_clipboard_image,
+            commands::pick_chat_target,
+            commands::get_all_chat_targets,
+            commands::remove_chat_target,
             commands::get_scrcpy_status,
             commands::get_session_status,
             commands::start_session,
             commands::stop_session,
             commands::get_settings,
             commands::save_settings,
+            commands::get_theme,
+            commands::set_theme,
             commands::get_diagnostics,
             commands::open_download_dir
         ])
@@ -129,6 +136,18 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Paint the native frame with the stored theme before the webview shows anything;
+            // the page itself applies the CSS palette from localStorage even earlier.
+            if let Some(window) = app.get_webview_window("main") {
+                let theme = settings::load(app.handle()).theme;
+                let native = if theme == "light" {
+                    tauri::Theme::Light
+                } else {
+                    tauri::Theme::Dark
+                };
+                let _ = window.set_theme(Some(native));
+            }
+
             let show_item =
                 MenuItem::with_id(app, "show", "Tampilkan jendela", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Keluar", true, None::<&str>)?;
