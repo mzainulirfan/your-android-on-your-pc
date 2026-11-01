@@ -1,0 +1,241 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#080b12"/>
+      <stop offset="1" stop-color="#04060a"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#ffffff" stroke-opacity="0.025" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="0.55" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#0b1020"/>
+    </linearGradient>
+    <radialGradient id="wallGlow" cx="0.7" cy="0.2" r="0.7">
+      <stop offset="0" stop-color="#818cf8" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#818cf8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="send" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <filter id="panelShadow" x="-30%" y="-60%" width="160%" height="260%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <rect width="1440" height="900" fill="url(#bg)"/>
+  <rect width="1440" height="900" fill="url(#grid)"/>
+  <circle cx="250" cy="170" r="330" fill="url(#glowA)"/>
+  <circle cx="1230" cy="760" r="360" fill="url(#glowB)"/>
+
+  <!-- header -->
+  <text x="72" y="66" fill="#f4f4f5" font-size="30" font-weight="700" letter-spacing="-0.4">Model sekarang · 2 jendela (cap)</text>
+  <text x="72" y="96" fill="#a1a1aa" font-size="14">Panel kontrol (Tauri) dan mirror (scrcpy) tetap dua jendela OS; tracker Win32 merekatkannya tiap 40 ms.</text>
+  <rect x="1290" y="42" width="78" height="26" rx="13" fill="#10b981" fill-opacity="0.12" stroke="#10b981" stroke-opacity="0.4"/>
+  <text x="1329" y="59" fill="#6ee7b7" font-size="9.5" font-weight="700" letter-spacing="1" text-anchor="middle">SEKARANG</text>
+
+  <!-- left: zoom on the seam -->
+  <rect x="72" y="150" width="384" height="130" rx="16" fill="#0b1220" fill-opacity="0.85" stroke="#ffffff" stroke-opacity="0.07"/>
+  <text x="92" y="176" fill="#e4e4e7" font-size="13.5" font-weight="600">Detail garis rekat (zoom ×4)</text>
+  <clipPath id="zoomClip"><rect x="92" y="186" width="344" height="56" rx="8"/></clipPath>
+  <g clip-path="url(#zoomClip)">
+    <rect x="92" y="186" width="344" height="28" fill="#0f172a"/>
+    <rect x="92" y="214" width="344" height="28" fill="url(#wall)"/>
+    <rect x="92" y="186" width="344" height="1" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="92" y="212" width="344" height="3" fill="#10b981" fill-opacity="0.85"/>
+    <path d="M120 190h40" stroke="#94a3b8" stroke-opacity="0.5" stroke-width="1"/>
+  </g>
+  <text x="92" y="262" fill="#71717a" font-size="10.5">Dua bayangan DWM bertemu di 1 px; posisi ditulis 25×/detik.</text>
+
+  <!-- toolbar window -->
+  <rect x="520" y="150" width="400" height="110" rx="14" fill="#0f172a" stroke="#ffffff" stroke-opacity="0.14" filter="url(#panelShadow)"/>
+  <!-- grip -->
+  <g fill="#475569">
+    <circle cx="538" cy="162" r="1.5"/><circle cx="544" cy="162" r="1.5"/>
+    <circle cx="538" cy="168" r="1.5"/><circle cx="544" cy="168" r="1.5"/>
+    <circle cx="538" cy="174" r="1.5"/><circle cx="544" cy="174" r="1.5"/>
+  </g>
+  <circle cx="582" cy="168" r="3.5" fill="#34d399"/>
+  <circle cx="582" cy="168" r="6" fill="none" stroke="#34d399" stroke-opacity="0.25"/>
+  <text x="592" y="171.5" fill="#94a3b8" font-size="9.5">scrcpy · 192.168.1.3:5555</text>
+
+  <!-- window action icons -->
+  <g fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round">
+    <circle cx="815" cy="168" r="4.6"/><path d="M815 160.5v6"/>
+    <circle cx="837" cy="167" r="4.6"/><path d="M834.8 167h4.4"/><path d="M840.5 170.5l3 3"/>
+    <circle cx="859" cy="167" r="4.6"/><path d="M856.8 167h4.4M859 164.8v4.4"/><path d="M862.5 170.5l3 3"/>
+    <path d="M876 165.5l5 5 5-5"/>
+  </g>
+  <g stroke="#f87171" stroke-opacity="0.85" stroke-width="1.4" stroke-linecap="round">
+    <path d="M897 164l6 6M903 164l-6 6"/>
+  </g>
+
+  <!-- pin field + send -->
+  <rect x="532" y="186" width="252" height="30" rx="8" fill="#090c14" stroke="#ffffff" stroke-opacity="0.1"/>
+  <g stroke="#64748b" stroke-width="1.2" fill="none" stroke-linecap="round">
+    <rect x="542" y="197" width="9" height="7" rx="1.6"/>
+    <path d="M544 197v-2.4a2.5 2.5 0 015 0V197"/>
+  </g>
+  <text x="557" y="205" fill="#64748b" font-size="10.5">PIN / password</text>
+  <g stroke="#64748b" stroke-width="1.2" fill="none" stroke-linecap="round">
+    <path d="M764 199c3-4 7-4 10 0-3 4-7 4-10 0z"/>
+    <circle cx="769" cy="201" r="1.7"/>
+  </g>
+  <rect x="792" y="186" width="116" height="30" rx="8" fill="url(#send)"/>
+  <text x="850" y="205" fill="#052e16" font-size="11" font-weight="700" text-anchor="middle">Kirim</text>
+
+  <!-- saved key chips -->
+  <g>
+    <rect x="532" y="222" width="76" height="22" rx="11" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.09"/>
+    <text x="570" y="236.5" fill="#cbd5e1" font-size="9" text-anchor="middle">PIN Utama</text>
+    <rect x="616" y="222" width="84" height="22" rx="11" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.09"/>
+    <text x="658" y="236.5" fill="#cbd5e1" font-size="9" text-anchor="middle">PIN 6-Digit</text>
+    <rect x="708" y="222" width="68" height="22" rx="11" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.09"/>
+    <text x="742" y="236.5" fill="#cbd5e1" font-size="9" text-anchor="middle">PIN Bank</text>
+    <rect x="784" y="222" width="22" height="22" rx="11" fill="#10b981" fill-opacity="0.08" stroke="#10b981" stroke-opacity="0.25"/>
+    <path d="M795 228v10M790 233h10" stroke="#6ee7b7" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+
+  <!-- mirror window -->
+  <rect x="520" y="260" width="400" height="540" fill="url(#wall)"/>
+  <rect x="520" y="260" width="400" height="540" fill="url(#wallGlow)"/>
+  <circle cx="590" cy="700" r="150" fill="#6366f1" fill-opacity="0.18"/>
+  <circle cx="880" cy="330" r="130" fill="#a855f7" fill-opacity="0.14"/>
+  <rect x="520" y="700" width="400" height="100" fill="#05070c" fill-opacity="0.35"/>
+
+  <!-- phone status bar -->
+  <text x="542" y="284" fill="#e0e7ff" fill-opacity="0.75" font-size="8">21:47</text>
+  <g stroke="#e0e7ff" stroke-opacity="0.7" stroke-width="1" fill="none">
+    <path d="M838 281v-4M842 281v-6M846 281v-2"/>
+    <rect x="852" y="277" width="13" height="6" rx="2"/>
+    <rect x="866" y="277" width="10" height="6" rx="2"/>
+  </g>
+
+  <!-- lock badge -->
+  <circle cx="720" cy="334" r="17" fill="#ffffff" fill-opacity="0.1"/>
+  <g stroke="#e0e7ff" stroke-width="1.4" fill="none">
+    <rect x="714" y="332" width="12" height="9" rx="2"/>
+    <path d="M716.5 332v-3a3.5 3.5 0 017 0v3"/>
+  </g>
+
+  <text x="720" y="416" fill="#eef2ff" font-size="54" font-weight="300" text-anchor="middle" letter-spacing="1">21:47</text>
+  <text x="720" y="442" fill="#c7d2fe" fill-opacity="0.8" font-size="12" text-anchor="middle">Selasa, 28 Oktober</text>
+
+  <!-- pin dots -->
+  <g fill="#ffffff" fill-opacity="0.06" stroke="#e0e7ff" stroke-opacity="0.4">
+    <circle cx="655" cy="492" r="6.5"/>
+    <circle cx="681" cy="492" r="6.5"/>
+    <circle cx="707" cy="492" r="6.5"/>
+    <circle cx="733" cy="492" r="6.5"/>
+    <circle cx="759" cy="492" r="6.5"/>
+    <circle cx="785" cy="492" r="6.5"/>
+  </g>
+  <text x="720" y="526" fill="#c7d2fe" fill-opacity="0.55" font-size="9.5" text-anchor="middle">Masukkan PIN</text>
+
+  <!-- bottom shortcuts -->
+  <text x="562" y="756" fill="#e0e7ff" fill-opacity="0.7" font-size="10">Darurat</text>
+  <g stroke="#e0e7ff" stroke-opacity="0.7" stroke-width="1.2" fill="none">
+    <rect x="866" y="746" width="14" height="10" rx="2"/>
+    <circle cx="873" cy="751" r="2.6"/>
+  </g>
+
+  <!-- window outlines -->
+  <rect x="508" y="138" width="424" height="134" rx="18" fill="none" stroke="#10b981" stroke-opacity="0.55" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <rect x="508" y="252" width="424" height="556" rx="4" fill="none" stroke="#22d3ee" stroke-opacity="0.5" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <path d="M932 268h20" stroke="#22d3ee" stroke-opacity="0.5" stroke-width="1"/>
+
+  <!-- tags -->
+  <rect x="520" y="110" width="170" height="24" rx="12" fill="#10b981" fill-opacity="0.12" stroke="#10b981" stroke-opacity="0.45"/>
+  <circle cx="534" cy="122" r="3" fill="#34d399"/>
+  <text x="544" y="125.5" fill="#6ee7b7" font-size="9.5" font-weight="600" letter-spacing="0.4">PANEL · jendela Tauri</text>
+
+  <rect x="952" y="248" width="196" height="24" rx="12" fill="#22d3ee" fill-opacity="0.1" stroke="#22d3ee" stroke-opacity="0.4"/>
+  <circle cx="966" cy="260" r="3" fill="#22d3ee"/>
+  <text x="976" y="263.5" fill="#67e8f9" font-size="9.5" font-weight="600" letter-spacing="0.4">MIRROR · jendela scrcpy</text>
+  <text x="952" y="292" fill="#2dd4bf" font-size="9" fill-opacity="0.8">↑ rekat flush, lebar selalu sama</text>
+
+  <!-- left card: tracker -->
+  <rect x="72" y="300" width="384" height="210" rx="16" fill="#0b1220" fill-opacity="0.85" stroke="#ffffff" stroke-opacity="0.07"/>
+  <text x="92" y="330" fill="#e4e4e7" font-size="13.5" font-weight="600">Rekat tiap 40 ms (sudah jalan)</text>
+  <g>
+    <circle cx="102" cy="364" r="9" fill="#10b981" fill-opacity="0.14" stroke="#10b981" stroke-opacity="0.35"/>
+    <text x="102" y="367.5" fill="#6ee7b7" font-size="9" font-weight="700" text-anchor="middle">1</text>
+    <text x="120" y="368" fill="#d4d4d8" font-size="10.5" font-family="ui-monospace, Consolas, monospace">FindWindowW("YAOP - &lt;serial&gt;")</text>
+
+    <circle cx="102" cy="402" r="9" fill="#10b981" fill-opacity="0.14" stroke="#10b981" stroke-opacity="0.35"/>
+    <text x="102" y="405.5" fill="#6ee7b7" font-size="9" font-weight="700" text-anchor="middle">2</text>
+    <text x="120" y="406" fill="#d4d4d8" font-size="10.5">GetWindowRect → posisi + ukuran mirror</text>
+
+    <circle cx="102" cy="440" r="9" fill="#10b981" fill-opacity="0.14" stroke="#10b981" stroke-opacity="0.35"/>
+    <text x="102" y="443.5" fill="#6ee7b7" font-size="9" font-weight="700" text-anchor="middle">3</text>
+    <text x="120" y="444" fill="#d4d4d8" font-size="10.5">set_size + set_position panel (DPI-aware)</text>
+  </g>
+  <text x="92" y="482" fill="#71717a" font-size="10.5">Tanpa IPC ke scrcpy: murni Win32, video tidak tersentuh.</text>
+
+  <!-- left card: consequences -->
+  <rect x="72" y="530" width="384" height="270" rx="16" fill="#0b1220" fill-opacity="0.85" stroke="#ffffff" stroke-opacity="0.07"/>
+  <text x="92" y="560" fill="#e4e4e7" font-size="13.5" font-weight="600">Konsekuensi model ini</text>
+  <g fill="#a1a1aa" font-size="11">
+    <circle cx="98" cy="590" r="2.5" fill="#f59e0b"/>
+    <text x="110" y="594">2 HWND: bayangan &amp; radius sendiri, garis rekat 1 px.</text>
+    <circle cx="98" cy="620" r="2.5" fill="#f59e0b"/>
+    <text x="110" y="624">Blur kaca tak bisa melihat video; hanya smoke.</text>
+    <circle cx="98" cy="650" r="2.5" fill="#71717a"/>
+    <text x="110" y="654">Panel di-skip dari taskbar — Alt+Tab hanya mirror.</text>
+    <circle cx="98" cy="680" r="2.5" fill="#71717a"/>
+    <text x="110" y="684">Fokus: field PIN ambil, pill kembalikan ke mirror.</text>
+    <circle cx="98" cy="710" r="2.5" fill="#71717a"/>
+    <text x="110" y="714">Tracker gagal → panel ke tengah, video tetap hidup.</text>
+  </g>
+  <rect x="92" y="746" width="344" height="1" fill="#ffffff" fill-opacity="0.06"/>
+  <circle cx="100" cy="774" r="3" fill="#34d399"/>
+  <text x="112" y="778" fill="#6ee7b7" font-size="10.5">Biaya perubahan: nol — ini yang berjalan sekarang.</text>
+
+  <!-- right card: panel contents -->
+  <rect x="960" y="300" width="408" height="170" rx="16" fill="#0b1220" fill-opacity="0.85" stroke="#ffffff" stroke-opacity="0.07"/>
+  <text x="980" y="330" fill="#e4e4e7" font-size="13.5" font-weight="600">Tiga bentuk panel</text>
+  <g font-size="9" fill="#cbd5e1">
+    <rect x="980" y="344" width="112" height="26" rx="13" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.09"/>
+    <text x="1036" y="361" text-anchor="middle">Pill · 200×44</text>
+    <rect x="1100" y="344" width="112" height="26" rx="13" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.09"/>
+    <text x="1156" y="361" text-anchor="middle">Bar · 480×96</text>
+    <rect x="1220" y="344" width="112" height="26" rx="13" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.09"/>
+    <text x="1276" y="361" text-anchor="middle">Tall · 480×128</text>
+  </g>
+  <g fill="#a1a1aa" font-size="11">
+    <text x="980" y="404">• Satu field PIN + eye, tombol Kirim (Enter).</text>
+    <text x="980" y="430">• Chip kunci tersimpan DPAPI → kirim sekali klik.</text>
+    <text x="980" y="456">• Toggle layar, zoom ±, ciutkan, tutup, seret.</text>
+  </g>
+
+  <!-- right card: why -->
+  <rect x="960" y="490" width="408" height="160" rx="16" fill="#0b1220" fill-opacity="0.85" stroke="#ffffff" stroke-opacity="0.07"/>
+  <text x="980" y="520" fill="#e4e4e7" font-size="13.5" font-weight="600">Kenapa dipertahankan</text>
+  <g fill="#a1a1aa" font-size="11">
+    <text x="980" y="552">• scrcpy tidak perlu dimodifikasi atau di-rebuild.</text>
+    <text x="980" y="578">• Tidak menyentuh SDL, fokus, fullscreen, DPI.</text>
+    <text x="980" y="604">• Panel bisa reload tanpa memutus video.</text>
+    <text x="980" y="630">• Kegagalan terisolasi: video tetap prioritas.</text>
+  </g>
+
+  <!-- right card: limits -->
+  <rect x="960" y="670" width="408" height="130" rx="16" fill="#0b1220" fill-opacity="0.85" stroke="#ffffff" stroke-opacity="0.07"/>
+  <text x="980" y="700" fill="#e4e4e7" font-size="13.5" font-weight="600">Yang belum sempurna</text>
+  <g fill="#a1a1aa" font-size="11">
+    <text x="980" y="730">• Jahitan 1 px + dua bayangan DWM terlihat di tepi.</text>
+    <text x="980" y="756">• Panel bukan bagian dari frame video.</text>
+    <text x="980" y="782">• Efek kaca berbayang tidak bisa menembus video.</text>
+  </g>
+
+  <text x="72" y="858" fill="#475569" font-size="10">Sumber: apps/desktop/src-tauri/src/mirror.rs · keypad.rs — tracker 40 ms, ukuran panel mengikuti mirror secara fisik (DPI-aware).</text>
+</svg>

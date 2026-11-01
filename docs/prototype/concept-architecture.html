@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Konsep arsitektur panel + mirror — YAOP</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #05070c;
+    --card: #0b1220;
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #e4e4e7;
+    --muted: #a1a1aa;
+    --dim: #71717a;
+    --emerald: #34d399;
+    --cyan: #22d3ee;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(60rem 40rem at 15% -10%, rgba(16, 185, 129, 0.10), transparent 60%),
+      radial-gradient(60rem 40rem at 90% 20%, rgba(34, 211, 238, 0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 48px 28px 64px; }
+  .eyebrow {
+    margin: 0 0 10px;
+    color: var(--dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  h1 { margin: 0; font-size: clamp(26px, 3.4vw, 40px); letter-spacing: -0.02em; }
+  .lede { margin: 12px 0 0; max-width: 820px; color: var(--muted); font-size: 14px; }
+  .lede code { color: #cbd5e1; font-size: 12.5px; }
+
+  .grid { display: grid; gap: 28px; margin-top: 36px; }
+  @media (min-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+  .card {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)), var(--card);
+    overflow: hidden;
+  }
+  .cap { padding: 20px 22px 0; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge-now { color: #6ee7b7; background: rgba(16, 185, 129, 0.10); border: 1px solid rgba(16, 185, 129, 0.35); }
+  .badge-next { color: #67e8f9; background: rgba(34, 211, 238, 0.10); border: 1px solid rgba(34, 211, 238, 0.35); }
+  .cap h2 { margin: 12px 0 4px; font-size: 19px; letter-spacing: -0.01em; }
+  .cap p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .shot { display: block; padding: 16px; }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.06); }
+  .shot:hover img { border-color: rgba(52, 211, 153, 0.35); }
+
+  .compare {
+    margin-top: 32px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--card);
+    overflow: hidden;
+  }
+  .compare h3 { margin: 0; padding: 18px 22px 6px; font-size: 14px; }
+  .compare p { margin: 0; padding: 0 22px 14px; color: var(--dim); font-size: 11.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 11px 22px; text-align: left; border-top: 1px solid rgba(255, 255, 255, 0.06); vertical-align: top; }
+  th { color: var(--dim); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+  td:first-child { color: var(--muted); width: 26%; }
+  td.good { color: #a7f3d0; }
+  td.warn { color: #fcd34d; }
+  footer { margin-top: 28px; color: var(--dim); font-size: 11px; }
+  footer code { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">YAOP · konsep antarmuka</p>
+    <h1>Panel kontrol + mirror: dua model jendela</h1>
+    <p class="lede">
+      Konsep ini membandingkan dua cara menempelkan panel ke video. Kiri: model yang berjalan sekarang —
+      dua jendela OS yang direkatkan tracker 40 ms. Kanan: usulan — panel dan video menjadi child dari
+      satu parent window. Klik gambar untuk membuka SVG resolusi penuh.
+    </p>
+  </header>
+
+  <div class="grid">
+    <figure class="card">
+      <div class="cap">
+        <span class="badge badge-now">Berjalan sekarang</span>
+        <h2>2 jendela · model cap</h2>
+        <p>Panel Tauri selalu-on-top menempel rata di atas jendela scrcpy. Lebar, posisi, dan bentuknya dihitung ulang tiap 40 ms.</p>
+      </div>
+      <a class="shot" href="concept-cap-two-windows.svg" target="_blank" rel="noopener">
+        <img src="concept-cap-two-windows.svg" alt="Konsep dua jendela: panel Tauri terpisah menempel di atas jendela mirror scrcpy, dengan garis rekat tipis di antaranya." />
+      </a>
+    </figure>
+
+    <figure class="card">
+      <div class="cap">
+        <span class="badge badge-next">Usulan</span>
+        <h2>1 jendela · SetParent</h2>
+        <p>Jendela scrcpy di-reparent sebagai child di dalam satu jendela induk. Satu frame, satu bayangan, satu entri taskbar.</p>
+      </div>
+      <a class="shot" href="concept-single-window.svg" target="_blank" rel="noopener">
+        <img src="concept-single-window.svg" alt="Konsep satu jendela: panel dan video berada di dalam satu bingkai tanpa garis rekat." />
+      </a>
+    </figure>
+  </div>
+
+  <section class="compare">
+    <h3>Perbedaan yang bisa dirasakan</h3>
+    <p>Ringkas — bukan keputusan implementasi.</p>
+    <table>
+      <thead>
+        <tr><th>Aspek</th><th>2 jendela (cap)</th><th>1 jendela (SetParent)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Jendela OS</td>
+          <td class="warn">2 HWND: panel + mirror</td>
+          <td class="good">1 parent + 1 child</td>
+        </tr>
+        <tr>
+          <td>Taskbar / Alt+Tab</td>
+          <td class="good">Panel di-skip; hanya mirror</td>
+          <td class="good">Satu entri</td>
+        </tr>
+        <tr>
+          <td>Garis rekat</td>
+          <td class="warn">1 px + dua bayangan DWM</td>
+          <td class="good">Tidak ada</td>
+        </tr>
+        <tr>
+          <td>Blur kaca di atas video</td>
+          <td class="warn">Tidak bisa (jendela lain)</td>
+          <td class="warn">Tetap tidak bisa (compositor)</td>
+        </tr>
+        <tr>
+          <td>Seret / resize</td>
+          <td class="good">Sudah jalan (panel = title bar)</td>
+          <td class="warn">Perlu diteruskan ke SDL</td>
+        </tr>
+        <tr>
+          <td>Biaya perubahan</td>
+          <td class="good">Nol</td>
+          <td class="warn">Modul host baru + uji perangkat</td>
+        </tr>
+        <tr>
+          <td>Risiko</td>
+          <td class="good">Terisolasi: video tetap hidup</td>
+          <td class="warn">Fokus, DPI, fullscreen, uhid</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    File: <code>docs/prototype/concept-cap-two-windows.svg</code> · <code>docs/prototype/concept-single-window.svg</code>.
+    Model kanan belum diterapkan; belum ada kode yang berubah.
+  </footer>
+</div>
+</body>
+</html>

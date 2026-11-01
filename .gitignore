@@ -1,0 +1,18 @@
+# Dependencies & build output
+node_modules/
+dist/
+dist-portable/
+apps/desktop/src-tauri/target/
+
+# Third-party runtimes (adb, scrcpy + DLLs) — see agents.md, they are dropped in locally
+binaries/
+
+# Local app state
+*.local
+.settings.json
+settings.local.json
+
+# OS noise
+Thumbs.db
+Desktop.ini
+.DS_Store
